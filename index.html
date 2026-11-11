@@ -1,192 +1,422 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Beverage Intelligence</title>
+  
+  <!-- CDN Libraries -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+
   <style>
-    body { font-family: 'Inter', sans-serif; background-color: #F7F7F5; color: #202622; -webkit-tap-highlight-color: transparent; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-    .tab-content { display: none; padding-bottom: 90px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #F7F7F5;
+      color: #202622;
+      -webkit-tap-highlight-color: transparent;
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab-content { display: none; padding-bottom: 95px; }
     .tab-content.active { display: block; }
     .modal { display: none; }
     .modal.active { display: flex; }
-    .primary-bg { background-color: #243B35; }
-    .primary-text { color: #243B35; }
+    .bg-primary { background-color: #243B35; }
+    .text-primary { color: #243B35; }
   </style>
 </head>
 <body>
 
-  <!-- Header -->
-  <div class="primary-bg text-white p-4 pt-8 sticky top-0 z-20 shadow-md flex justify-between items-center">
-    <h1 class="text-lg font-bold tracking-wide uppercase">Beverage Intel</h1>
-    <i data-lucide="settings" class="w-5 h-5"></i>
-  </div>
+  <!-- Header Atas -->
+  <header class="bg-primary text-white p-4 pt-10 sticky top-0 z-20 shadow-md flex justify-between items-center">
+    <div>
+      <h1 class="text-base font-bold tracking-wider uppercase">BEVERAGE INTELLIGENCE</h1>
+      <p class="text-[10px] text-gray-300">Personal Beverage R&D System</p>
+    </div>
+    <!-- Tombol Pengaturan Kanan Atas Berfungsi -->
+    <button onclick="switchTab('settings')" class="p-2 rounded-full hover:bg-white/10 active:scale-95 transition" title="Pengaturan">
+      <i data-lucide="settings" class="w-5 h-5"></i>
+    </button>
+  </header>
 
-  <!-- VIEWS -->
-  <!-- 1. Dashboard -->
-  <div id="view-dashboard" class="tab-content active p-4">
-    <h2 class="text-xl font-bold mb-4">Overview</h2>
-    <div class="grid grid-cols-2 gap-3">
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-        <p class="text-xs font-semibold text-gray-500">Ingredients</p>
-        <p id="dash-ing-count" class="text-2xl font-bold mt-1">0</p>
+  <!-- 1. OVERVIEW DASHBOARD -->
+  <main id="view-dashboard" class="tab-content active p-4">
+    <h2 class="text-lg font-bold mb-3">Overview</h2>
+    <div class="grid grid-cols-2 gap-3 mb-4">
+      <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <p class="text-xs font-semibold text-gray-500">Total Ingredients</p>
+        <p id="dash-ing-count" class="text-2xl font-bold mt-1 text-primary">0</p>
       </div>
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-        <p class="text-xs font-semibold text-gray-500">Recipes</p>
-        <p id="dash-rec-count" class="text-2xl font-bold mt-1">0</p>
+      <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+        <p class="text-xs font-semibold text-gray-500">Active Recipes</p>
+        <p id="dash-rec-count" class="text-2xl font-bold mt-1 text-primary">0</p>
       </div>
-      <div class="primary-bg text-white p-4 rounded-xl shadow-sm col-span-2">
-        <p class="text-xs font-semibold opacity-80">System Status</p>
-        <p class="text-lg font-bold mt-1">Offline Ready (iOS)</p>
+      <div class="bg-primary text-white p-4 rounded-xl shadow-sm col-span-2">
+        <div class="flex justify-between items-center">
+          <div>
+            <p class="text-xs font-semibold text-gray-300">Database Status</p>
+            <p class="text-sm font-bold mt-0.5">Indexed LocalStorage (Offline Ready)</p>
+          </div>
+          <i data-lucide="shield-check" class="w-7 h-7 text-emerald-400"></i>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- 2. Ingredients -->
-  <div id="view-ingredients" class="tab-content p-4">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-xl font-bold">Database Bahan</h2>
-      <button onclick="openModal('modal-ingredient')" class="primary-bg text-white p-2 rounded-full shadow-md"><i data-lucide="plus" class="w-5 h-5"></i></button>
+    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+      <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Workflow Alur Kerja</h3>
+      <ol class="text-xs text-gray-600 space-y-2 list-decimal pl-4">
+        <li>Tambahkan bahan baku di menu <b>Bahan</b>.</li>
+        <li>Rakit resep & HPP di menu <b>Resep</b> (bisa masukkan banyak bahan sekaligus).</li>
+        <li>Hitung porsi batch produksi di menu <b>Batch</b>.</li>
+        <li>Analisis performa & cetak laporan bulanan PDF di <b>Menu Eng</b>.</li>
+      </ol>
     </div>
-    <div id="ingredients-list" class="space-y-3"></div>
-  </div>
+  </main>
 
-  <!-- 3. Recipes -->
-  <div id="view-recipes" class="tab-content p-4">
+  <!-- 2. INGREDIENTS DATABASE -->
+  <main id="view-ingredients" class="tab-content p-4">
     <div class="flex justify-between items-center mb-4">
-      <h2 class="text-xl font-bold">Recipe & HPP</h2>
-      <button onclick="openModal('modal-recipe')" class="primary-bg text-white p-2 rounded-full shadow-md"><i data-lucide="plus" class="w-5 h-5"></i></button>
-    </div>
-    <div id="recipes-list" class="space-y-3"></div>
-  </div>
-
-  <!-- 4. Menu Engineering -->
-  <div id="view-menueng" class="tab-content p-4">
-    <div class="flex justify-between items-center mb-4">
-      <h2 class="text-xl font-bold">Menu Engineering</h2>
-      <button onclick="generateMonthlyReport()" class="bg-green-700 text-white px-3 py-2 rounded-lg shadow-md text-xs font-bold flex items-center gap-1">
-        <i data-lucide="download" class="w-4 h-4"></i> Report PDF
+      <h2 class="text-lg font-bold">Database Bahan Baku</h2>
+      <button onclick="openModal('modal-ingredient')" class="bg-primary text-white p-2.5 rounded-full shadow-md active:scale-95">
+        <i data-lucide="plus" class="w-5 h-5"></i>
       </button>
     </div>
-    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-4">
-      <canvas id="matrixChart" height="250"></canvas>
-    </div>
-    <div class="grid grid-cols-2 gap-3 text-center" id="matrix-stats">
-      <!-- Stats injected via JS -->
-    </div>
-  </div>
+    <div id="ingredients-list" class="space-y-2.5"></div>
+  </main>
 
-  <!-- MODALS -->
-  <!-- Add Ingredient Modal -->
-  <div id="modal-ingredient" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-end pb-10">
-    <div class="bg-white w-full h-[80vh] rounded-t-2xl p-5 flex flex-col relative">
+  <!-- 3. RECIPE LIBRARY & HPP -->
+  <main id="view-recipes" class="tab-content p-4">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-bold">Recipe & HPP Library</h2>
+      <button onclick="openModal('modal-recipe')" class="bg-primary text-white p-2.5 rounded-full shadow-md active:scale-95">
+        <i data-lucide="plus" class="w-5 h-5"></i>
+      </button>
+    </div>
+    <div id="recipes-list" class="space-y-3"></div>
+  </main>
+
+  <!-- 4. BATCH PREPARATION CALCULATOR -->
+  <main id="view-batch" class="tab-content p-4">
+    <h2 class="text-lg font-bold mb-4">Batch Preparation Scaling</h2>
+    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
+      <div>
+        <label class="text-xs font-semibold text-gray-500">Pilih Resep Minuman / Base</label>
+        <select id="batch-recipe-select" onchange="calculateBatchScaling()" class="w-full p-3 border rounded-lg bg-gray-50 mt-1 text-sm font-medium">
+          <option value="">-- Pilih Resep --</option>
+        </select>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="text-xs font-semibold text-gray-500">Standard Yield (gr/ml)</label>
+          <input type="number" id="batch-std-yield" value="1000" oninput="calculateBatchScaling()" class="w-full p-2.5 border rounded-lg mt-1 text-sm bg-gray-100" readonly>
+        </div>
+        <div>
+          <label class="text-xs font-semibold text-gray-500">Target Production (gr/ml)</label>
+          <input type="number" id="batch-target-yield" value="2500" oninput="calculateBatchScaling()" class="w-full p-2.5 border rounded-lg mt-1 text-sm font-bold bg-white">
+        </div>
+      </div>
+
+      <div id="batch-result" class="border-t pt-3 hidden">
+        <div class="flex justify-between text-xs text-gray-500 mb-2">
+          <span>Scaling Factor: <b id="batch-scale-factor" class="text-primary font-bold">1x</b></span>
+          <span>Est. Batch Cost: <b id="batch-total-cost" class="text-primary font-bold">Rp 0</b></span>
+        </div>
+        <div id="batch-ingredients-scaled" class="space-y-1.5 text-xs bg-gray-50 p-3 rounded-lg border"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 5. MENU ENGINEERING ANALYZER -->
+  <main id="view-menueng" class="tab-content p-4">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-lg font-bold">Menu Engineering</h2>
+      <button onclick="generateMonthlyReportPDF()" class="bg-emerald-700 text-white px-3 py-2 rounded-lg shadow-md text-xs font-bold flex items-center gap-1.5 active:scale-95">
+        <i data-lucide="file-text" class="w-4 h-4"></i> Export Report PDF
+      </button>
+    </div>
+
+    <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm mb-4">
+      <p class="text-xs font-semibold text-gray-500 mb-2 text-center">Profitability vs Popularity Matrix</p>
+      <div class="h-60 w-full relative">
+        <canvas id="matrixChart"></canvas>
+      </div>
+    </div>
+
+    <div id="matrix-summary" class="grid grid-cols-2 gap-2 text-xs"></div>
+  </main>
+
+  <!-- 6. SETTINGS & DATA MANAGEMENT -->
+  <main id="view-settings" class="tab-content p-4">
+    <h2 class="text-lg font-bold mb-4">Pengaturan & Backup Data</h2>
+    <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
+      <div>
+        <label class="text-xs font-semibold text-gray-500">Nama Outlet / Bisnis</label>
+        <input type="text" id="setting-biz-name" onchange="saveSettings()" class="w-full p-2.5 border rounded-lg text-sm mt-1" placeholder="Qose Coffee">
+      </div>
+      <hr>
+      <div class="space-y-2.5 pt-1">
+        <button onclick="exportBackupJSON()" class="w-full bg-gray-800 text-white p-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2">
+          <i data-lucide="download-cloud" class="w-4 h-4"></i> Backup Semua Data (JSON)
+        </button>
+        <button onclick="document.getElementById('import-file').click()" class="w-full border border-gray-300 text-gray-700 p-3 rounded-lg font-semibold text-xs flex items-center justify-center gap-2">
+          <i data-lucide="upload-cloud" class="w-4 h-4"></i> Restore Data (JSON)
+        </button>
+        <input type="file" id="import-file" onchange="importBackupJSON(event)" class="hidden" accept=".json">
+        
+        <button onclick="resetAllData()" class="w-full border border-red-200 text-red-600 p-3 rounded-lg font-semibold text-xs mt-4">
+          Reset Semua Data
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- MODAL: ADD / EDIT INGREDIENT -->
+  <div id="modal-ingredient" class="modal fixed inset-0 bg-black/60 z-50 justify-center items-end">
+    <div class="bg-white w-full h-[88vh] rounded-t-2xl p-5 flex flex-col relative animate-slide-up">
       <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-bold">Add Ingredient</h3>
+        <h3 id="modal-ing-title" class="text-base font-bold">Tambah Bahan Baku Baru</h3>
         <button onclick="closeModal('modal-ingredient')"><i data-lucide="x" class="w-6 h-6"></i></button>
       </div>
-      <div class="space-y-4 overflow-y-auto">
-        <div><label class="text-xs text-gray-500">Name</label><input type="text" id="ing-name" class="w-full p-3 border rounded-lg bg-gray-50"></div>
-        <div><label class="text-xs text-gray-500">Category</label>
-          <select id="ing-cat" class="w-full p-3 border rounded-lg bg-gray-50">
-            <option>Coffee Beans</option><option>Milk & Dairy</option><option>Syrup</option>
+      <div class="space-y-3 overflow-y-auto pb-10">
+        <input type="hidden" id="ing-edit-id">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Nama Bahan</label>
+          <input type="text" id="ing-name" class="w-full p-3 border rounded-lg bg-gray-50 text-sm focus:outline-none focus:border-primary" placeholder="Contoh: CS 01 / Fresh Milk">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Kategori (13 Kategori Master Prompt)</label>
+          <select id="ing-cat" class="w-full p-3 border rounded-lg bg-gray-50 text-sm">
+            <option>Coffee Beans</option>
+            <option>Milk & Dairy</option>
+            <option>Non-Dairy Milk</option>
+            <option>Tea</option>
+            <option>Matcha</option>
+            <option>Chocolate</option>
+            <option>Syrup & Sauce</option>
+            <option>Sweetener</option>
+            <option>Fruit</option>
+            <option>Powder</option>
+            <option>Water</option>
+            <option>Garnish</option>
+            <option>Other</option>
           </select>
         </div>
-        <div class="flex gap-2">
-          <div class="flex-1"><label class="text-xs text-gray-500">Price (Rp)</label><input type="number" id="ing-price" class="w-full p-3 border rounded-lg bg-gray-50"></div>
-          <div class="flex-1"><label class="text-xs text-gray-500">Size</label><input type="number" id="ing-size" class="w-full p-3 border rounded-lg bg-gray-50"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs font-medium text-gray-500">Harga Beli (Rp)</label>
+            <input type="text" id="ing-price" oninput="calcUnitCostPreview()" class="w-full p-3 border rounded-lg bg-gray-50 text-sm" placeholder="20.000">
+          </div>
+          <div>
+            <label class="text-xs font-medium text-gray-500">Ukuran Kemasan</label>
+            <input type="number" id="ing-size" oninput="calcUnitCostPreview()" class="w-full p-3 border rounded-lg bg-gray-50 text-sm" placeholder="1000">
+          </div>
         </div>
-        <div><label class="text-xs text-gray-500">Unit (ml/gr/pcs)</label><input type="text" id="ing-unit" class="w-full p-3 border rounded-lg bg-gray-50" value="ml"></div>
-        <button onclick="saveIngredient()" class="w-full primary-bg text-white p-4 rounded-xl font-bold mt-2">Save Ingredient</button>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Satuan Pakai</label>
+          <select id="ing-unit" onchange="calcUnitCostPreview()" class="w-full p-3 border rounded-lg bg-gray-50 text-sm">
+            <option value="gram">Gram (gram)</option>
+            <option value="ml">Milliliter (ml)</option>
+            <option value="pcs">Pcs</option>
+            <option value="kg">Kilogram (kg)</option>
+            <option value="liter">Liter</option>
+          </select>
+        </div>
+        <div class="p-3 bg-gray-100 rounded-lg text-xs">
+          <span class="text-gray-500">Hasil Kalkulasi Unit Cost:</span>
+          <p id="ing-cost-preview" class="text-base font-bold text-primary mt-0.5">Rp 0 / gram</p>
+        </div>
+        <button onclick="saveIngredient()" class="w-full bg-primary text-white p-3.5 rounded-xl font-bold text-sm mt-2">Simpan Bahan</button>
       </div>
     </div>
   </div>
 
-  <!-- Add Recipe Modal -->
-  <div id="modal-recipe" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-end pb-10">
-    <div class="bg-white w-full h-[85vh] rounded-t-2xl p-5 flex flex-col relative">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-lg font-bold">Create Recipe</h3>
+  <!-- MODAL: ADD RECIPE -->
+  <div id="modal-recipe" class="modal fixed inset-0 bg-black/60 z-50 justify-center items-end">
+    <div class="bg-white w-full h-[90vh] rounded-t-2xl p-5 flex flex-col relative">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-base font-bold">Buat Resep Minuman</h3>
         <button onclick="closeModal('modal-recipe')"><i data-lucide="x" class="w-6 h-6"></i></button>
       </div>
-      <div class="space-y-4 overflow-y-auto">
-        <div><label class="text-xs text-gray-500">Menu Name</label><input type="text" id="rec-name" class="w-full p-3 border rounded-lg bg-gray-50"></div>
-        <div><label class="text-xs text-gray-500">Selling Price (Rp)</label><input type="number" id="rec-price" class="w-full p-3 border rounded-lg bg-gray-50"></div>
-        <div class="bg-gray-100 p-3 rounded-lg border">
-          <label class="text-xs font-bold">Simulasi Data Penjualan (Bulan Ini)</label>
-          <input type="number" id="rec-sales" placeholder="Jumlah Terjual (Unit)" class="w-full p-2 border rounded-lg mt-1 text-sm">
+      <div class="space-y-3 overflow-y-auto pb-12">
+        <div>
+          <label class="text-xs font-medium text-gray-500">Nama Menu Minuman</label>
+          <input type="text" id="rec-name" class="w-full p-2.5 border rounded-lg bg-gray-50 text-sm" placeholder="Ice Black / Latte">
         </div>
-        <div class="border-t pt-3">
-          <label class="text-xs font-bold block mb-2">Ingredients (HPP)</label>
-          <div class="flex gap-2">
-            <select id="rec-ing-select" class="flex-1 p-2 border rounded-lg text-sm"></select>
-            <input type="number" id="rec-ing-qty" placeholder="Qty" class="w-20 p-2 border rounded-lg text-sm">
-            <button onclick="addTempIngredient()" class="bg-gray-700 text-white px-3 rounded-lg font-bold">+</button>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs font-medium text-gray-500">Harga Jual (Rp)</label>
+            <input type="text" id="rec-price" oninput="calcRecipeHPPPreview()" class="w-full p-2.5 border rounded-lg bg-gray-50 text-sm" placeholder="35.000">
           </div>
-          <ul id="temp-ing-list" class="mt-2 text-sm space-y-1 bg-gray-50 p-2 rounded-lg border hidden"></ul>
+          <div>
+            <label class="text-xs font-medium text-gray-500">Estimasi Terjual / Bln</label>
+            <input type="number" id="rec-sales" class="w-full p-2.5 border rounded-lg bg-gray-50 text-sm" placeholder="100">
+          </div>
         </div>
-        <button onclick="saveRecipe()" class="w-full primary-bg text-white p-4 rounded-xl font-bold mt-2">Save Recipe</button>
+
+        <!-- Form Tambah Komposisi Bahan Baku (Multi-Ingredient Support) -->
+        <div class="border-t pt-3">
+          <label class="text-xs font-bold text-gray-700 block mb-1">Komposisi Bahan Baku (HPP)</label>
+          <p class="text-[10px] text-gray-400 mb-2">Pilih bahan lalu masukkan takaran. Tekan + untuk menambah banyak bahan.</p>
+          <div class="flex gap-2">
+            <select id="rec-ing-select" class="flex-1 p-2 border rounded-lg text-xs bg-white"></select>
+            <input type="number" id="rec-ing-qty" placeholder="Qty" class="w-20 p-2 border rounded-lg text-xs">
+            <button onclick="addIngredientToRecipeTemp()" class="bg-primary text-white px-3 rounded-lg font-bold text-xs flex items-center gap-1">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah
+            </button>
+          </div>
+
+          <!-- List Bahan Yang Sudah Didaftarkan ke Resep Ini -->
+          <ul id="rec-temp-ing-list" class="mt-2 space-y-1.5 text-xs bg-gray-50 p-3 rounded-lg border hidden"></ul>
+        </div>
+
+        <div>
+          <label class="text-xs font-medium text-gray-500">Langkah Persiapan (SOP Barista)</label>
+          <textarea id="rec-steps" rows="3" class="w-full p-2.5 border rounded-lg bg-gray-50 text-xs" placeholder="1. Ekstraksi espresso 18g&#10;2. Tuang air/susu..."></textarea>
+        </div>
+
+        <!-- Summary Preview Box -->
+        <div class="bg-primary text-white p-3.5 rounded-xl space-y-1 text-xs">
+          <div class="flex justify-between"><span>Total HPP (Food Cost):</span><b id="rec-preview-hpp">Rp 0</b></div>
+          <div class="flex justify-between"><span>Gross Profit Margin:</span><b id="rec-preview-margin">0%</b></div>
+        </div>
+
+        <button onclick="saveRecipe()" class="w-full bg-primary text-white p-3.5 rounded-xl font-bold text-sm">Simpan Resep Minuman</button>
       </div>
     </div>
   </div>
 
-  <!-- BOTTOM NAVIGATION -->
-  <div class="fixed bottom-0 w-full bg-white border-t flex justify-around p-2 pb-6 z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
-    <button onclick="switchTab('dashboard')" class="nav-btn primary-text flex flex-col items-center w-16" data-target="dashboard"><i data-lucide="home"></i><span class="text-[10px] mt-1 font-bold">Home</span></button>
-    <button onclick="switchTab('ingredients')" class="nav-btn text-gray-400 flex flex-col items-center w-16" data-target="ingredients"><i data-lucide="database"></i><span class="text-[10px] mt-1 font-bold">Bahan</span></button>
-    <button onclick="switchTab('recipes')" class="nav-btn text-gray-400 flex flex-col items-center w-16" data-target="recipes"><i data-lucide="coffee"></i><span class="text-[10px] mt-1 font-bold">Resep</span></button>
-    <button onclick="switchTab('menueng')" class="nav-btn text-gray-400 flex flex-col items-center w-16" data-target="menueng"><i data-lucide="trending-up"></i><span class="text-[10px] mt-1 font-bold">Menu Eng</span></button>
-  </div>
+  <!-- BOTTOM NAVIGATION BAR -->
+  <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-2 pb-6 z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+    <button onclick="switchTab('dashboard')" class="nav-btn text-primary flex flex-col items-center w-14" data-target="dashboard">
+      <i data-lucide="home" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Home</span>
+    </button>
+    <button onclick="switchTab('ingredients')" class="nav-btn text-gray-400 flex flex-col items-center w-14" data-target="ingredients">
+      <i data-lucide="database" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Bahan</span>
+    </button>
+    <button onclick="switchTab('recipes')" class="nav-btn text-gray-400 flex flex-col items-center w-14" data-target="recipes">
+      <i data-lucide="coffee" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Resep</span>
+    </button>
+    <button onclick="switchTab('batch')" class="nav-btn text-gray-400 flex flex-col items-center w-14" data-target="batch">
+      <i data-lucide="beaker" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Batch</span>
+    </button>
+    <button onclick="switchTab('menueng')" class="nav-btn text-gray-400 flex flex-col items-center w-14" data-target="menueng">
+      <i data-lucide="trending-up" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Menu Eng</span>
+    </button>
+  </nav>
 
+  <!-- JAVASCRIPT LOGIC -->
   <script>
     lucide.createIcons();
 
-    // Data Store
-    let db = { ingredients: [], recipes: [] };
-    let tempRecipeIngs = [];
+    // Clean Number Parser (Mengubah format "35.000" atau "35000" menjadi angka murni 35000)
+    function parseCleanNumber(val) {
+      if (val === null || val === undefined || val === '') return 0;
+      if (typeof val === 'number') return val;
+      let str = val.toString().trim();
+      str = str.replace(/\./g, '').replace(/,/g, '.');
+      return parseFloat(str) || 0;
+    }
+
+    // Data Storage State
+    let db = {
+      settings: { bizName: 'Qose Coffee' },
+      ingredients: [],
+      recipes: []
+    };
+    let tempRecipeIngredients = [];
     let chartInstance = null;
 
-    // Load Data
+    // Load & Save to localStorage
     function loadData() {
-      const saved = localStorage.getItem('bvg_intel');
-      if(saved) db = JSON.parse(saved);
+      const saved = localStorage.getItem('beverage_intel_db');
+      if (saved) {
+        try { db = JSON.parse(saved); } catch(e) { console.error(e); }
+      }
+      if (!db.settings) db.settings = { bizName: 'Qose Coffee' };
+      document.getElementById('setting-biz-name').value = db.settings.bizName;
       updateUI();
     }
-    function saveData() { localStorage.setItem('bvg_intel', JSON.stringify(db)); updateUI(); }
+
+    function saveData() {
+      localStorage.setItem('beverage_intel_db', JSON.stringify(db));
+      updateUI();
+    }
 
     const formatIDR = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
 
-    // Navigation
+    // Tab Navigation Switcher
     function switchTab(tabId) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.getElementById(`view-${tabId}`).classList.add('active');
+      
       document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('primary-text'); btn.classList.add('text-gray-400');
+        btn.classList.remove('text-primary'); btn.classList.add('text-gray-400');
       });
-      document.querySelector(`[data-target="${tabId}"]`).classList.add('primary-text');
-      document.querySelector(`[data-target="${tabId}"]`).classList.remove('text-gray-400');
-      if(tabId === 'menueng') renderChart();
+      const activeBtn = document.querySelector(`[data-target="${tabId}"]`);
+      if (activeBtn) {
+        activeBtn.classList.add('text-primary');
+        activeBtn.classList.remove('text-gray-400');
+      }
+
+      if (tabId === 'batch') populateBatchSelect();
+      if (tabId === 'menueng') renderMenuEngMatrix();
     }
 
-    // Modals
-    function openModal(id) { document.getElementById(id).classList.add('active'); populateSelects(); }
-    function closeModal(id) { document.getElementById(id).classList.remove('active'); tempRecipeIngs = []; renderTempIngs(); }
+    // Modal Handlers
+    function openModal(id) {
+      document.getElementById(id).classList.add('active');
+      if (id === 'modal-recipe') populateIngredientSelect();
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+      if (id === 'modal-ingredient') {
+        document.getElementById('ing-edit-id').value = '';
+        document.getElementById('modal-ing-title').innerText = 'Tambah Bahan Baku Baru';
+      }
+      if (id === 'modal-recipe') {
+        tempRecipeIngredients = [];
+        renderTempIngredients();
+      }
+    }
 
-    // Ingredients Logic
+    // --- INGREDIENTS LOGIC ---
+    function calcUnitCostPreview() {
+      const price = parseCleanNumber(document.getElementById('ing-price').value);
+      const size = parseFloat(document.getElementById('ing-size').value) || 0;
+      const unit = document.getElementById('ing-unit').value;
+      const cost = size > 0 ? (price / size) : 0;
+      document.getElementById('ing-cost-preview').innerText = `${formatIDR(cost)} / ${unit}`;
+    }
+
     function saveIngredient() {
-      const name = document.getElementById('ing-name').value;
-      const price = parseFloat(document.getElementById('ing-price').value);
+      const editId = document.getElementById('ing-edit-id').value;
+      const name = document.getElementById('ing-name').value.trim();
+      const category = document.getElementById('ing-cat').value;
+      const price = parseCleanNumber(document.getElementById('ing-price').value);
       const size = parseFloat(document.getElementById('ing-size').value);
       const unit = document.getElementById('ing-unit').value;
-      
-      if(!name || !price || !size) return alert('Isi semua data!');
-      db.ingredients.push({ id: Date.now(), name, price, size, unit, unitCost: price/size });
+
+      if (!name || isNaN(price) || isNaN(size) || size <= 0) return alert('Mohon isi nama, harga beli, dan ukuran kemasan!');
+
+      const unitCost = price / size;
+
+      if (editId) {
+        // Update Bahan Yang Ada
+        const idx = db.ingredients.findIndex(i => i.id == editId);
+        if (idx !== -1) {
+          db.ingredients[idx] = { ...db.ingredients[idx], name, category, price, size, unit, unitCost };
+        }
+      } else {
+        // Tambah Bahan Baru
+        db.ingredients.push({ id: Date.now(), name, category, price, size, unit, unitCost });
+      }
+
       saveData();
       closeModal('modal-ingredient');
       document.getElementById('ing-name').value = '';
@@ -194,146 +424,400 @@
       document.getElementById('ing-size').value = '';
     }
 
-    // Recipe Logic
-    function populateSelects() {
-      const sel = document.getElementById('rec-ing-select');
-      sel.innerHTML = '<option value="">Pilih Bahan...</option>';
-      db.ingredients.forEach(i => sel.innerHTML += `<option value="${i.id}">${i.name}</option>`);
-    }
-    
-    function addTempIngredient() {
-      const id = document.getElementById('rec-ing-select').value;
-      const qty = parseFloat(document.getElementById('rec-ing-qty').value);
-      if(!id || !qty) return;
+    function editIngredient(id) {
       const ing = db.ingredients.find(i => i.id == id);
-      tempRecipeIngs.push({ ...ing, qty, cost: ing.unitCost * qty });
-      renderTempIngs();
+      if (!ing) return;
+      document.getElementById('ing-edit-id').value = ing.id;
+      document.getElementById('ing-name').value = ing.name;
+      document.getElementById('ing-cat').value = ing.category;
+      document.getElementById('ing-price').value = ing.price;
+      document.getElementById('ing-size').value = ing.size;
+      document.getElementById('ing-unit').value = ing.unit;
+      document.getElementById('modal-ing-title').innerText = 'Edit Bahan Baku';
+      calcUnitCostPreview();
+      openModal('modal-ingredient');
     }
 
-    function renderTempIngs() {
-      const list = document.getElementById('temp-ing-list');
-      list.innerHTML = '';
-      if(tempRecipeIngs.length > 0) list.classList.remove('hidden');
-      tempRecipeIngs.forEach(i => {
-        list.innerHTML += `<li class="flex justify-between"><span>${i.name} (${i.qty}${i.unit})</span> <span class="font-bold">${formatIDR(i.cost)}</span></li>`;
+    function deleteIngredient(id) {
+      if (confirm('Hapus bahan baku ini dari database?')) {
+        db.ingredients = db.ingredients.filter(i => i.id != id);
+        saveData();
+      }
+    }
+
+    // --- RECIPES LOGIC ---
+    function populateIngredientSelect() {
+      const sel = document.getElementById('rec-ing-select');
+      sel.innerHTML = '<option value="">-- Pilih Bahan --</option>';
+      db.ingredients.forEach(i => {
+        sel.innerHTML += `<option value="${i.id}">${i.name} (${formatIDR(i.unitCost)}/${i.unit})</option>`;
       });
+    }
+
+    function addIngredientToRecipeTemp() {
+      const selId = document.getElementById('rec-ing-select').value;
+      const qty = parseFloat(document.getElementById('rec-ing-qty').value);
+      if (!selId || isNaN(qty) || qty <= 0) return alert('Pilih bahan dan masukkan takaran Qty!');
+
+      const ing = db.ingredients.find(i => i.id == selId);
+      
+      // Mencegah duplikasi bahan dalam resep yang sama
+      const existingIdx = tempRecipeIngredients.findIndex(t => t.ingredientId == ing.id);
+      if (existingIdx !== -1) {
+        tempRecipeIngredients[existingIdx].qty += qty;
+        tempRecipeIngredients[existingIdx].cost = tempRecipeIngredients[existingIdx].unitCost * tempRecipeIngredients[existingIdx].qty;
+      } else {
+        tempRecipeIngredients.push({
+          ingredientId: ing.id,
+          name: ing.name,
+          unit: ing.unit,
+          unitCost: ing.unitCost,
+          qty: qty,
+          cost: ing.unitCost * qty
+        });
+      }
+
+      document.getElementById('rec-ing-qty').value = '';
+      renderTempIngredients();
+      calcRecipeHPPPreview();
+    }
+
+    function renderTempIngredients() {
+      const list = document.getElementById('rec-temp-ing-list');
+      list.innerHTML = '';
+      if (tempRecipeIngredients.length > 0) list.classList.remove('hidden');
+      else list.classList.add('hidden');
+
+      tempRecipeIngredients.forEach((item, idx) => {
+        list.innerHTML += `
+          <li class="flex justify-between items-center py-1 border-b last:border-0 border-gray-200">
+            <span>${item.name} - <b>${item.qty} ${item.unit}</b></span>
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-primary">${formatIDR(item.cost)}</span>
+              <button onclick="tempRecipeIngredients.splice(${idx},1); renderTempIngredients(); calcRecipeHPPPreview();" class="text-red-500 font-bold text-xs p-1">✕</button>
+            </div>
+          </li>`;
+      });
+    }
+
+    function calcRecipeHPPPreview() {
+      const price = parseCleanNumber(document.getElementById('rec-price').value);
+      const totalHPP = tempRecipeIngredients.reduce((sum, item) => sum + item.cost, 0);
+      const margin = price > 0 ? (((price - totalHPP) / price) * 100).toFixed(1) : 0;
+      
+      document.getElementById('rec-preview-hpp').innerText = formatIDR(totalHPP);
+      document.getElementById('rec-preview-margin').innerText = `${margin}%`;
     }
 
     function saveRecipe() {
-      const name = document.getElementById('rec-name').value;
-      const price = parseFloat(document.getElementById('rec-price').value);
-      const sales = parseInt(document.getElementById('rec-sales').value || 0);
-      if(!name || tempRecipeIngs.length === 0) return alert('Nama dan minimal 1 bahan wajib!');
-      const totalCost = tempRecipeIngs.reduce((sum, item) => sum + item.cost, 0);
-      db.recipes.push({ id: Date.now(), name, sellingPrice: price, salesVolume: sales, ingredients: tempRecipeIngs, totalCost });
+      const name = document.getElementById('rec-name').value.trim();
+      const sellingPrice = parseCleanNumber(document.getElementById('rec-price').value);
+      const salesVolume = parseInt(document.getElementById('rec-sales').value) || 0;
+      const steps = document.getElementById('rec-steps').value;
+
+      // AUTO-ADD FALLBACK: Jika pengguna memilih bahan di dropdown dan isi Qty tapi tidak menekan tombol +, daftarkan otomatis!
+      const selId = document.getElementById('rec-ing-select').value;
+      const qty = parseFloat(document.getElementById('rec-ing-qty').value);
+      if (selId && !isNaN(qty) && qty > 0) {
+        const ing = db.ingredients.find(i => i.id == selId);
+        if (ing) {
+          const existingIdx = tempRecipeIngredients.findIndex(t => t.ingredientId == ing.id);
+          if (existingIdx !== -1) {
+            tempRecipeIngredients[existingIdx].qty += qty;
+            tempRecipeIngredients[existingIdx].cost = tempRecipeIngredients[existingIdx].unitCost * tempRecipeIngredients[existingIdx].qty;
+          } else {
+            tempRecipeIngredients.push({
+              ingredientId: ing.id, name: ing.name, unit: ing.unit, unitCost: ing.unitCost, qty: qty, cost: ing.unitCost * qty
+            });
+          }
+        }
+      }
+
+      if (!name) return alert('Mohon isi nama menu resep!');
+      if (tempRecipeIngredients.length === 0) return alert('Pilih minimal 1 bahan baku dan masukkan takaran Qty!');
+
+      const totalCost = tempRecipeIngredients.reduce((sum, item) => sum + item.cost, 0);
+
+      db.recipes.push({
+        id: Date.now(),
+        name, sellingPrice, salesVolume, steps,
+        ingredients: [...tempRecipeIngredients],
+        totalCost
+      });
+
       saveData();
       closeModal('modal-recipe');
+      document.getElementById('rec-name').value = '';
+      document.getElementById('rec-price').value = '';
+      document.getElementById('rec-sales').value = '';
+      document.getElementById('rec-steps').value = '';
+      document.getElementById('rec-ing-select').value = '';
+      document.getElementById('rec-ing-qty').value = '';
+      tempRecipeIngredients = [];
     }
 
-    // PDF Generators
-    function generateSOP(recipeId) {
+    function deleteRecipe(id) {
+      if (confirm('Hapus resep ini?')) {
+        db.recipes = db.recipes.filter(r => r.id != id);
+        saveData();
+      }
+    }
+
+    // --- BATCH SCALING LOGIC ---
+    function populateBatchSelect() {
+      const sel = document.getElementById('batch-recipe-select');
+      sel.innerHTML = '<option value="">-- Pilih Resep --</option>';
+      db.recipes.forEach(r => {
+        sel.innerHTML += `<option value="${r.id}">${r.name}</option>`;
+      });
+    }
+
+    function calculateBatchScaling() {
+      const recipeId = document.getElementById('batch-recipe-select').value;
+      const resultBox = document.getElementById('batch-result');
+      if (!recipeId) { resultBox.classList.add('hidden'); return; }
+
       const recipe = db.recipes.find(r => r.id == recipeId);
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
+      const stdYield = parseFloat(document.getElementById('batch-std-yield').value) || 1000;
+      const targetYield = parseFloat(document.getElementById('batch-target-yield').value) || 1;
       
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(18);
-      doc.text("SOP & RECIPE SPECIFICATION", 14, 20);
-      doc.setFontSize(12);
-      doc.text(`Menu: ${recipe.name}`, 14, 30);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Selling Price: ${formatIDR(recipe.sellingPrice)}`, 14, 37);
-      doc.text(`Total HPP: ${formatIDR(recipe.totalCost)}`, 14, 44);
-      
-      const tableData = recipe.ingredients.map((ing, i) => [i + 1, ing.name, `${ing.qty} ${ing.unit}`, formatIDR(ing.cost)]);
-      doc.autoTable({
-        startY: 55,
-        head: [['No', 'Ingredient', 'Quantity', 'Cost']],
-        body: tableData,
-        headStyles: { fillColor: [36, 59, 53] } // Primary color
+      const scaleFactor = targetYield / stdYield;
+      document.getElementById('batch-scale-factor').innerText = `${scaleFactor.toFixed(2)}x`;
+
+      const listContainer = document.getElementById('batch-ingredients-scaled');
+      listContainer.innerHTML = '';
+      let scaledTotalCost = 0;
+
+      recipe.ingredients.forEach(item => {
+        const scaledQty = item.qty * scaleFactor;
+        const scaledCost = item.cost * scaleFactor;
+        scaledTotalCost += scaledCost;
+
+        listContainer.innerHTML += `
+          <div class="flex justify-between py-0.5 border-b last:border-0">
+            <span>${item.name}</span>
+            <span class="font-bold text-gray-800">${scaledQty.toFixed(1)} ${item.unit} (${formatIDR(scaledCost)})</span>
+          </div>`;
       });
-      
-      doc.save(`SOP_${recipe.name}.pdf`);
+
+      document.getElementById('batch-total-cost').innerText = formatIDR(scaledTotalCost);
+      resultBox.classList.remove('hidden');
     }
 
-    function generateMonthlyReport() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(18);
-      doc.text("MONTHLY MENU ENGINEERING REPORT", 14, 20);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Generated: ${new Date().toLocaleDateString('id-ID')}`, 14, 28);
-      
-      const tableData = db.recipes.map(r => {
-        const profit = r.sellingPrice - r.totalCost;
-        return [r.name, r.salesVolume, formatIDR(profit), formatIDR(profit * r.salesVolume)];
-      });
-      
-      doc.autoTable({
-        startY: 40,
-        head: [['Menu', 'Units Sold', 'Margin/Unit', 'Total Profit']],
-        body: tableData,
-        headStyles: { fillColor: [36, 59, 53] }
-      });
-      
-      doc.save(`Menu_Engineering_${new Date().getTime()}.pdf`);
-    }
-
-    // UI Renderers
-    function updateUI() {
-      document.getElementById('dash-ing-count').innerText = db.ingredients.length;
-      document.getElementById('dash-rec-count').innerText = db.recipes.length;
-      
-      const ingList = document.getElementById('ingredients-list');
-      ingList.innerHTML = db.ingredients.map(i => `
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex justify-between">
-          <div><p class="font-bold">${i.name}</p><p class="text-xs text-gray-500">${formatIDR(i.price)} / ${i.size}${i.unit}</p></div>
-          <div class="text-right"><p class="font-bold text-green-700">${formatIDR(i.unitCost)}</p><p class="text-[10px] text-gray-400">per ${i.unit}</p></div>
-        </div>
-      `).join('');
-
-      const recList = document.getElementById('recipes-list');
-      recList.innerHTML = db.recipes.map(r => `
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-          <div class="flex justify-between mb-2">
-            <p class="font-bold text-lg">${r.name}</p>
-            <button onclick="generateSOP(${r.id})" class="text-xs bg-gray-100 text-gray-700 font-bold px-2 py-1 rounded border">SOP PDF</button>
-          </div>
-          <div class="grid grid-cols-2 gap-2 text-sm border-t pt-2 mt-2">
-            <div><p class="text-xs text-gray-500">Total HPP</p><p class="font-bold">${formatIDR(r.totalCost)}</p></div>
-            <div><p class="text-xs text-gray-500">Margin</p><p class="font-bold text-green-700">${formatIDR(r.sellingPrice - r.totalCost)}</p></div>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    function renderChart() {
+    // --- MENU ENGINEERING LOGIC ---
+    function renderMenuEngMatrix() {
       const ctx = document.getElementById('matrixChart').getContext('2d');
-      if(chartInstance) chartInstance.destroy();
-      
-      const scatterData = db.recipes.map(r => ({
-        x: r.salesVolume, 
-        y: r.sellingPrice - r.totalCost, 
-        label: r.name
-      }));
+      if (chartInstance) chartInstance.destroy();
+
+      if (db.recipes.length === 0) {
+        document.getElementById('matrix-summary').innerHTML = '<p class="col-span-2 text-center text-gray-400">Belum ada resep tersimpan.</p>';
+        return;
+      }
+
+      const dataset = db.recipes.map(r => {
+        const margin = r.sellingPrice - r.totalCost;
+        return { x: r.salesVolume, y: margin, label: r.name };
+      });
 
       chartInstance = new Chart(ctx, {
         type: 'scatter',
         data: {
-          datasets: [{ label: 'Menu Performance', data: scatterData, backgroundColor: '#243B35', pointRadius: 6 }]
+          datasets: [{
+            label: 'Menu Minuman',
+            data: dataset,
+            backgroundColor: '#243B35',
+            pointRadius: 7
+          }]
         },
         options: {
           responsive: true,
-          plugins: { tooltip: { callbacks: { label: (ctx) => `${ctx.raw.label}: ${ctx.raw.x} sold` } } },
-          scales: { x: { title: { display: true, text: 'Popularity (Units Sold)' } }, y: { title: { display: true, text: 'Profitability (Margin)' } } }
+          maintainAspectRatio: false,
+          plugins: {
+            tooltip: { callbacks: { label: ctx => `${ctx.raw.label}: ${ctx.raw.x} terjual | Margin ${formatIDR(ctx.raw.y)}` } }
+          },
+          scales: {
+            x: { title: { display: true, text: 'Popularitas (Unit Terjual)', font: { size: 10 } } },
+            y: { title: { display: true, text: 'Margin Keuntungan (Rp)', font: { size: 10 } } }
+          }
         }
       });
+
+      // Quadrants Breakdown
+      let star = 0, plow = 0, puzzle = 0, dog = 0;
+      db.recipes.forEach(r => {
+        const margin = r.sellingPrice - r.totalCost;
+        if (r.salesVolume >= 50 && margin >= 15000) star++;
+        else if (r.salesVolume >= 50 && margin < 15000) plow++;
+        else if (r.salesVolume < 50 && margin >= 15000) puzzle++;
+        else dog++;
+      });
+
+      document.getElementById('matrix-summary').innerHTML = `
+        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-green-600 shadow-sm">
+          <p class="font-bold text-gray-500">STAR (High/High)</p><p class="text-lg font-bold">${star}</p>
+        </div>
+        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-amber-500 shadow-sm">
+          <p class="font-bold text-gray-500">PLOWHORSE (High/Low)</p><p class="text-lg font-bold">${plow}</p>
+        </div>
+        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-blue-500 shadow-sm">
+          <p class="font-bold text-gray-500">PUZZLE (Low/High)</p><p class="text-lg font-bold">${puzzle}</p>
+        </div>
+        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-red-500 shadow-sm">
+          <p class="font-bold text-gray-500">DOG (Low/Low)</p><p class="text-lg font-bold">${dog}</p>
+        </div>`;
     }
 
-    // Init
+    // --- PDF GENERATOR ---
+    function generateSOPPDF(recipeId) {
+      const r = db.recipes.find(item => item.id == recipeId);
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(36, 59, 53);
+      doc.text("BARISTA STANDARD OPERATING PROCEDURE", 14, 20);
+      doc.setFontSize(12); doc.text(`Menu: ${r.name}`, 14, 28);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(10);
+      doc.text(`Harga Jual: ${formatIDR(r.sellingPrice)} | Total HPP: ${formatIDR(r.totalCost)}`, 14, 34);
+
+      const tableBody = r.ingredients.map((ing, i) => [i + 1, ing.name, `${ing.qty} ${ing.unit}`, formatIDR(ing.cost)]);
+      doc.autoTable({
+        startY: 42,
+        head: [['No', 'Bahan Baku', 'Takaran', 'Biaya']],
+        body: tableBody,
+        headStyles: { fillColor: [36, 59, 53] }
+      });
+
+      const finalY = doc.lastAutoTable.finalY || 60;
+      doc.setFont("helvetica", "bold"); doc.text("PREPARATION STEPS / INSTRUCTION:", 14, finalY + 12);
+      doc.setFont("helvetica", "normal");
+      const steps = r.steps || "Persiapkan gelas, campur bahan sesuai takaran SOP, sajikan.";
+      const splitSteps = doc.splitTextToSize(steps, 180);
+      doc.text(splitSteps, 14, finalY + 18);
+
+      doc.save(`SOP_${r.name.replace(/\s+/g, '_')}.pdf`);
+    }
+
+    function generateMonthlyReportPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(36, 59, 53);
+      doc.text(`${db.settings.bizName.toUpperCase()} - MONTHLY MENU ENGINEERING`, 14, 20);
+      doc.setFontSize(10); doc.setFont("helvetica", "normal");
+      doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
+
+      const tableData = db.recipes.map((r, i) => {
+        const margin = r.sellingPrice - r.totalCost;
+        const totalProfit = margin * r.salesVolume;
+        return [i + 1, r.name, formatIDR(r.sellingPrice), formatIDR(r.totalCost), r.salesVolume, formatIDR(totalProfit)];
+      });
+
+      doc.autoTable({
+        startY: 34,
+        head: [['No', 'Nama Menu', 'Harga Jual', 'HPP', 'Terjual', 'Total Profit']],
+        body: tableData,
+        headStyles: { fillColor: [36, 59, 53] }
+      });
+
+      doc.save(`Menu_Engineering_${db.settings.bizName.replace(/\s+/g, '_')}.pdf`);
+    }
+
+    // --- BACKUP & SETTINGS ---
+    function saveSettings() {
+      db.settings.bizName = document.getElementById('setting-biz-name').value;
+      saveData();
+    }
+    function exportBackupJSON() {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `bvg_intel_backup_${new Date().toISOString().slice(0,10)}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    }
+    function importBackupJSON(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          db = JSON.parse(evt.target.result);
+          saveData();
+          alert('Data berhasil di-restore!');
+        } catch(err) { alert('Format file JSON tidak valid!'); }
+      };
+      reader.readAsText(file);
+    }
+    function resetAllData() {
+      if (confirm('Apakah Anda yakin ingin menghapus SELURUH data?')) {
+        localStorage.removeItem('beverage_intel_db');
+        db = { settings: { bizName: 'Qose Coffee' }, ingredients: [], recipes: [] };
+        updateUI();
+      }
+    }
+
+    // --- UI MAIN RRENDERER ---
+    function updateUI() {
+      document.getElementById('dash-ing-count').innerText = db.ingredients.length;
+      document.getElementById('dash-rec-count').innerText = db.recipes.length;
+
+      // Render Ingredients List (With Edit & Delete Buttons)
+      const ingContainer = document.getElementById('ingredients-list');
+      if (db.ingredients.length === 0) {
+        ingContainer.innerHTML = '<p class="text-xs text-center text-gray-400 py-6">Belum ada bahan baku. Klik + untuk menambahkan.</p>';
+      } else {
+        ingContainer.innerHTML = db.ingredients.map(i => `
+          <div class="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center">
+            <div>
+              <p class="font-bold text-sm text-gray-900">${i.name}</p>
+              <p class="text-[11px] text-gray-400">${i.category} • ${formatIDR(i.price)} / ${i.size}${i.unit}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-right">
+                <p class="font-bold text-sm text-primary">${formatIDR(i.unitCost)}</p>
+                <p class="text-[10px] text-gray-400">per ${i.unit}</p>
+              </div>
+              <div class="flex items-center gap-1 border-l pl-2 border-gray-200">
+                <button onclick="editIngredient(${i.id})" class="p-1.5 text-gray-500 hover:text-primary"><i data-lucide="edit-2" class="w-4 h-4"></i></button>
+                <button onclick="deleteIngredient(${i.id})" class="p-1.5 text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+              </div>
+            </div>
+          </div>`).join('');
+      }
+
+      // Render Recipes List (With Delete & SOP Buttons)
+      const recContainer = document.getElementById('recipes-list');
+      if (db.recipes.length === 0) {
+        recContainer.innerHTML = '<p class="text-xs text-center text-gray-400 py-6">Belum ada resep. Klik + untuk membuat resep.</p>';
+      } else {
+        recContainer.innerHTML = db.recipes.map(r => {
+          const foodCostPct = r.sellingPrice > 0 ? ((r.totalCost / r.sellingPrice) * 100).toFixed(1) : 0;
+          return `
+            <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+              <div class="flex justify-between items-start mb-2">
+                <div>
+                  <h3 class="font-bold text-base text-primary">${r.name}</h3>
+                  <p class="text-xs text-gray-400">Harga Jual: ${formatIDR(r.sellingPrice)}</p>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button onclick="generateSOPPDF(${r.id})" class="bg-gray-100 text-primary border border-gray-300 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> SOP PDF
+                  </button>
+                  <button onclick="deleteRecipe(${r.id})" class="p-1.5 text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-2 text-xs border-t pt-2.5 mt-2">
+                <div><span class="text-gray-400">Total HPP:</span> <b class="block font-bold text-gray-800">${formatIDR(r.totalCost)}</b></div>
+                <div><span class="text-gray-400">Food Cost:</span> <b class="block font-bold text-amber-600">${foodCostPct}%</b></div>
+              </div>
+            </div>`;
+        }).join('');
+      }
+      lucide.createIcons();
+    }
+
+    // Init App
     window.onload = loadData;
   </script>
 </body>
