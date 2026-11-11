@@ -14,6 +14,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 
+  <!-- Firebase SDK for Real-time Cloud Sync -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -39,14 +43,19 @@
       <h1 class="text-base font-bold tracking-wider uppercase">BEVERAGE INTELLIGENCE</h1>
       <p class="text-[10px] text-gray-300">Personal Beverage R&D System</p>
     </div>
-    <!-- Tombol Pengaturan Kanan Atas Berfungsi -->
-    <button onclick="switchTab('settings')" class="p-2 rounded-full hover:bg-white/10 active:scale-95 transition" title="Pengaturan">
-      <i data-lucide="settings" class="w-5 h-5"></i>
-    </button>
+    <div class="flex items-center gap-2">
+      <!-- Status Indicator Sync -->
+      <span id="sync-status-badge" class="text-[10px] bg-emerald-800 text-emerald-200 px-2 py-1 rounded-full flex items-center gap-1 font-medium">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Offline/Local
+      </span>
+      <button onclick="switchTab('settings')" class="p-2 rounded-full hover:bg-white/10 active:scale-95 transition" title="Pengaturan">
+        <i data-lucide="settings" class="w-5 h-5"></i>
+      </button>
+    </div>
   </header>
 
   <!-- 1. OVERVIEW DASHBOARD -->
-  <main id="view-dashboard" class="tab-content active p-4">
+  <main id="view-dashboard" class="tab-content active p-4 max-w-4xl mx-auto">
     <h2 class="text-lg font-bold mb-3">Overview</h2>
     <div class="grid grid-cols-2 gap-3 mb-4">
       <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -60,10 +69,10 @@
       <div class="bg-primary text-white p-4 rounded-xl shadow-sm col-span-2">
         <div class="flex justify-between items-center">
           <div>
-            <p class="text-xs font-semibold text-gray-300">Database Status</p>
-            <p class="text-sm font-bold mt-0.5">Indexed LocalStorage (Offline Ready)</p>
+            <p class="text-xs font-semibold text-gray-300">Cloud Sync Status</p>
+            <p id="dash-sync-desc" class="text-sm font-bold mt-0.5">Lokal (Belum Terhubung Sync Key)</p>
           </div>
-          <i data-lucide="shield-check" class="w-7 h-7 text-emerald-400"></i>
+          <i id="dash-sync-icon" data-lucide="cloud-off" class="w-7 h-7 text-amber-400"></i>
         </div>
       </div>
     </div>
@@ -71,6 +80,7 @@
     <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
       <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Workflow Alur Kerja</h3>
       <ol class="text-xs text-gray-600 space-y-2 list-decimal pl-4">
+        <li>Buka menu <b>Settings</b> & masukkan <b>Sync Key</b> agar HP & Laptop terhubung.</li>
         <li>Tambahkan bahan baku di menu <b>Bahan</b>.</li>
         <li>Rakit resep & HPP di menu <b>Resep</b> (bisa masukkan banyak bahan sekaligus).</li>
         <li>Hitung porsi batch produksi di menu <b>Batch</b>.</li>
@@ -80,7 +90,7 @@
   </main>
 
   <!-- 2. INGREDIENTS DATABASE -->
-  <main id="view-ingredients" class="tab-content p-4">
+  <main id="view-ingredients" class="tab-content p-4 max-w-4xl mx-auto">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-lg font-bold">Database Bahan Baku</h2>
       <button onclick="openModal('modal-ingredient')" class="bg-primary text-white p-2.5 rounded-full shadow-md active:scale-95">
@@ -91,7 +101,7 @@
   </main>
 
   <!-- 3. RECIPE LIBRARY & HPP -->
-  <main id="view-recipes" class="tab-content p-4">
+  <main id="view-recipes" class="tab-content p-4 max-w-4xl mx-auto">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-lg font-bold">Recipe & HPP Library</h2>
       <button onclick="openModal('modal-recipe')" class="bg-primary text-white p-2.5 rounded-full shadow-md active:scale-95">
@@ -102,7 +112,7 @@
   </main>
 
   <!-- 4. BATCH PREPARATION CALCULATOR -->
-  <main id="view-batch" class="tab-content p-4">
+  <main id="view-batch" class="tab-content p-4 max-w-4xl mx-auto">
     <h2 class="text-lg font-bold mb-4">Batch Preparation Scaling</h2>
     <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
       <div>
@@ -133,7 +143,7 @@
   </main>
 
   <!-- 5. MENU ENGINEERING ANALYZER -->
-  <main id="view-menueng" class="tab-content p-4">
+  <main id="view-menueng" class="tab-content p-4 max-w-4xl mx-auto">
     <div class="flex justify-between items-center mb-4">
       <h2 class="text-lg font-bold">Menu Engineering</h2>
       <button onclick="generateMonthlyReportPDF()" class="bg-emerald-700 text-white px-3 py-2 rounded-lg shadow-md text-xs font-bold flex items-center gap-1.5 active:scale-95">
@@ -151,9 +161,30 @@
     <div id="matrix-summary" class="grid grid-cols-2 gap-2 text-xs"></div>
   </main>
 
-  <!-- 6. SETTINGS & DATA MANAGEMENT -->
-  <main id="view-settings" class="tab-content p-4">
-    <h2 class="text-lg font-bold mb-4">Pengaturan & Backup Data</h2>
+  <!-- 6. SETTINGS & CLOUD SYNC DATA MANAGEMENT -->
+  <main id="view-settings" class="tab-content p-4 max-w-4xl mx-auto">
+    <h2 class="text-lg font-bold mb-4">Pengaturan & Sinkronisasi Cloud</h2>
+    
+    <!-- BOX REAL-TIME CLOUD SYNC -->
+    <div class="bg-emerald-900 text-white p-4 rounded-xl shadow-md mb-4 space-y-3">
+      <div class="flex items-center gap-2">
+        <i data-lucide="cloud" class="w-5 h-5 text-emerald-400"></i>
+        <h3 class="font-bold text-sm">Hubungkan HP & Laptop (Real-Time Sync)</h3>
+      </div>
+      <p class="text-xs text-emerald-200">Masukkan Kode Sinkronisasi yang sama di HP dan Laptop kamu agar data otomatis terhubung.</p>
+      
+      <div>
+        <label class="text-[11px] text-emerald-300 font-semibold block mb-1">Kode Sinkronisasi (Sync Key)</label>
+        <div class="flex gap-2">
+          <input type="text" id="setting-sync-key" class="flex-1 p-2.5 rounded-lg text-gray-900 font-bold uppercase text-sm border-0" placeholder="Contoh: QOSE-BAR-2026">
+          <button onclick="connectCloudSync()" class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded-lg transition active:scale-95">
+            Connect
+          </button>
+        </div>
+      </div>
+      <p id="sync-connection-info" class="text-xs text-emerald-300 font-medium pt-1"></p>
+    </div>
+
     <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
       <div>
         <label class="text-xs font-semibold text-gray-500">Nama Outlet / Bisnis</label>
@@ -178,7 +209,7 @@
 
   <!-- MODAL: ADD / EDIT INGREDIENT -->
   <div id="modal-ingredient" class="modal fixed inset-0 bg-black/60 z-50 justify-center items-end">
-    <div class="bg-white w-full h-[88vh] rounded-t-2xl p-5 flex flex-col relative animate-slide-up">
+    <div class="bg-white w-full h-[88vh] max-w-2xl rounded-t-2xl p-5 flex flex-col relative animate-slide-up mx-auto">
       <div class="flex justify-between items-center mb-4">
         <h3 id="modal-ing-title" class="text-base font-bold">Tambah Bahan Baku Baru</h3>
         <button onclick="closeModal('modal-ingredient')"><i data-lucide="x" class="w-6 h-6"></i></button>
@@ -238,7 +269,7 @@
 
   <!-- MODAL: ADD RECIPE -->
   <div id="modal-recipe" class="modal fixed inset-0 bg-black/60 z-50 justify-center items-end">
-    <div class="bg-white w-full h-[90vh] rounded-t-2xl p-5 flex flex-col relative">
+    <div class="bg-white w-full h-[90vh] max-w-2xl rounded-t-2xl p-5 flex flex-col relative mx-auto">
       <div class="flex justify-between items-center mb-3">
         <h3 class="text-base font-bold">Buat Resep Minuman</h3>
         <button onclick="closeModal('modal-recipe')"><i data-lucide="x" class="w-6 h-6"></i></button>
@@ -310,11 +341,24 @@
     </button>
   </nav>
 
-  <!-- JAVASCRIPT LOGIC -->
+  <!-- JAVASCRIPT LOGIC WITH REALTIME CLOUD SYNC -->
   <script>
     lucide.createIcons();
 
-    // Clean Number Parser (Mengubah format "35.000" atau "35000" menjadi angka murni 35000)
+    // Firebase Initialization for Realtime Sync
+    const firebaseConfig = {
+      databaseURL: "https://beverage-intelligence-default-rtdb.asia-southeast1.firebasedatabase.app"
+    };
+    let firebaseDB = null;
+    let syncRef = null;
+    let currentSyncKey = "";
+
+    try {
+      firebase.initializeApp(firebaseConfig);
+      firebaseDB = firebase.database();
+    } catch(e) { console.log("Firebase init standard setup"); }
+
+    // Clean Number Parser
     function parseCleanNumber(val) {
       if (val === null || val === undefined || val === '') return 0;
       if (typeof val === 'number') return val;
@@ -325,30 +369,86 @@
 
     // Data Storage State
     let db = {
-      settings: { bizName: 'Qose Coffee' },
+      settings: { bizName: 'Qose Coffee', syncKey: '' },
       ingredients: [],
       recipes: []
     };
     let tempRecipeIngredients = [];
     let chartInstance = null;
+    let isRemoteUpdate = false;
 
-    // Load & Save to localStorage
+    // Load Local Storage & Initial Sync Setup
     function loadData() {
       const saved = localStorage.getItem('beverage_intel_db');
       if (saved) {
         try { db = JSON.parse(saved); } catch(e) { console.error(e); }
       }
-      if (!db.settings) db.settings = { bizName: 'Qose Coffee' };
+      if (!db.settings) db.settings = { bizName: 'Qose Coffee', syncKey: '' };
       document.getElementById('setting-biz-name').value = db.settings.bizName;
+      
+      if (db.settings.syncKey) {
+        document.getElementById('setting-sync-key').value = db.settings.syncKey;
+        connectCloudSync(true);
+      }
       updateUI();
     }
 
-    function saveData() {
+    function saveData(skipCloud = false) {
       localStorage.setItem('beverage_intel_db', JSON.stringify(db));
       updateUI();
+
+      // Push to Real-time Cloud Database if connected
+      if (!skipCloud && syncRef && currentSyncKey && !isRemoteUpdate) {
+        syncRef.set(db).catch(err => console.error("Cloud push failed:", err));
+      }
     }
 
     const formatIDR = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num || 0);
+
+    // --- REALTIME CLOUD SYNC LOGIC ---
+    function connectCloudSync(autoLoad = false) {
+      const keyInput = document.getElementById('setting-sync-key').value.trim().toUpperCase();
+      const infoText = document.getElementById('sync-connection-info');
+      const badge = document.getElementById('sync-status-badge');
+      const dashDesc = document.getElementById('dash-sync-desc');
+      const dashIcon = document.getElementById('dash-sync-icon');
+
+      if (!keyInput) return alert('Masukkan Kode Sinkronisasi!');
+
+      currentSyncKey = keyInput.replace(/[^A-Z0-9_-]/g, '');
+      db.settings.syncKey = currentSyncKey;
+
+      if (syncRef) syncRef.off(); // Detach previous listener
+
+      syncRef = firebaseDB.ref('sync_rooms/' + currentSyncKey);
+
+      // Listen to Real-time Changes from Cloud
+      syncRef.on('value', (snapshot) => {
+        const cloudData = snapshot.val();
+        if (cloudData) {
+          isRemoteUpdate = true;
+          db = cloudData;
+          saveData(true); // Save locally without echoing back
+          isRemoteUpdate = false;
+        } else if (!autoLoad) {
+          // Upload local data if room is newly created
+          syncRef.set(db);
+        }
+      });
+
+      infoText.innerText = `Terhubung ke Sync Key: ${currentSyncKey} (Realtime Live)`;
+      badge.innerHTML = `<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Cloud Sync: ${currentSyncKey}`;
+      badge.className = "text-[10px] bg-emerald-700 text-emerald-100 px-2.5 py-1 rounded-full flex items-center gap-1 font-semibold";
+
+      if (dashDesc) dashDesc.innerText = `Terhubung: ${currentSyncKey}`;
+      if (dashIcon) {
+        dashIcon.setAttribute("data-lucide", "cloud-lightning");
+        dashIcon.className = "w-7 h-7 text-emerald-400";
+        lucide.createIcons();
+      }
+
+      if (!autoLoad) alert(`Berhasil terhubung ke Sync Key: ${currentSyncKey}!`);
+    }
 
     // Tab Navigation Switcher
     function switchTab(tabId) {
@@ -407,13 +507,11 @@
       const unitCost = price / size;
 
       if (editId) {
-        // Update Bahan Yang Ada
         const idx = db.ingredients.findIndex(i => i.id == editId);
         if (idx !== -1) {
           db.ingredients[idx] = { ...db.ingredients[idx], name, category, price, size, unit, unitCost };
         }
       } else {
-        // Tambah Bahan Baru
         db.ingredients.push({ id: Date.now(), name, category, price, size, unit, unitCost });
       }
 
@@ -461,7 +559,6 @@
 
       const ing = db.ingredients.find(i => i.id == selId);
       
-      // Mencegah duplikasi bahan dalam resep yang sama
       const existingIdx = tempRecipeIngredients.findIndex(t => t.ingredientId == ing.id);
       if (existingIdx !== -1) {
         tempRecipeIngredients[existingIdx].qty += qty;
@@ -515,7 +612,6 @@
       const salesVolume = parseInt(document.getElementById('rec-sales').value) || 0;
       const steps = document.getElementById('rec-steps').value;
 
-      // AUTO-ADD FALLBACK: Jika pengguna memilih bahan di dropdown dan isi Qty tapi tidak menekan tombol +, daftarkan otomatis!
       const selId = document.getElementById('rec-ing-select').value;
       const qty = parseFloat(document.getElementById('rec-ing-qty').value);
       if (selId && !isNaN(qty) && qty > 0) {
@@ -752,17 +848,18 @@
     function resetAllData() {
       if (confirm('Apakah Anda yakin ingin menghapus SELURUH data?')) {
         localStorage.removeItem('beverage_intel_db');
-        db = { settings: { bizName: 'Qose Coffee' }, ingredients: [], recipes: [] };
+        db = { settings: { bizName: 'Qose Coffee', syncKey: '' }, ingredients: [], recipes: [] };
+        if (syncRef) syncRef.remove();
         updateUI();
       }
     }
 
-    // --- UI MAIN RRENDERER ---
+    // --- UI MAIN RENDERER ---
     function updateUI() {
       document.getElementById('dash-ing-count').innerText = db.ingredients.length;
       document.getElementById('dash-rec-count').innerText = db.recipes.length;
 
-      // Render Ingredients List (With Edit & Delete Buttons)
+      // Render Ingredients List
       const ingContainer = document.getElementById('ingredients-list');
       if (db.ingredients.length === 0) {
         ingContainer.innerHTML = '<p class="text-xs text-center text-gray-400 py-6">Belum ada bahan baku. Klik + untuk menambahkan.</p>';
@@ -786,7 +883,7 @@
           </div>`).join('');
       }
 
-      // Render Recipes List (With Delete & SOP Buttons)
+      // Render Recipes List
       const recContainer = document.getElementById('recipes-list');
       if (db.recipes.length === 0) {
         recContainer.innerHTML = '<p class="text-xs text-center text-gray-400 py-6">Belum ada resep. Klik + untuk membuat resep.</p>';
