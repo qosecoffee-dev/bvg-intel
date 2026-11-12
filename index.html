@@ -6,14 +6,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Beverage Intelligence</title>
-  
-  <!-- CDN Libraries -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
-
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -33,24 +30,23 @@
 </head>
 <body>
 
-  <!-- Top Header -->
   <header class="bg-primary text-white p-4 pt-10 sticky top-0 z-20 shadow-md flex justify-between items-center">
     <div>
       <h1 class="text-base font-bold tracking-wider uppercase">BEVERAGE INTELLIGENCE</h1>
       <p class="text-[10px] text-gray-300">Qose Beverage R&D System</p>
     </div>
     <div class="flex items-center gap-2">
-      <button onclick="syncFromSheets(false)" id="header-sync-btn" class="bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 active:scale-95 transition" title="Refresh Data dari Google Sheets">
+      <button onclick="syncFromSheets(false)" id="header-sync-btn" class="bg-white/10 hover:bg-white/20 px-2.5 py-1.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 active:scale-95 transition">
         <span id="sync-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
         <span id="header-sync-label">Memuat...</span>
       </button>
-      <button onclick="switchTab('settings')" class="p-2 rounded-full hover:bg-white/10 active:scale-95 transition" title="Pengaturan">
+      <button onclick="switchTab('settings')" class="p-2 rounded-full hover:bg-white/10 active:scale-95 transition">
         <i data-lucide="settings" class="w-5 h-5"></i>
       </button>
     </div>
   </header>
 
-  <!-- 1. OVERVIEW DASHBOARD -->
+  <!-- 1. OVERVIEW -->
   <main id="view-dashboard" class="tab-content active p-4 max-w-4xl mx-auto">
     <div class="flex justify-between items-center mb-3">
       <h2 class="text-lg font-bold">Overview</h2>
@@ -58,7 +54,6 @@
         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Sync Sekarang
       </button>
     </div>
-
     <div class="grid grid-cols-2 gap-3 mb-4">
       <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
         <p class="text-xs font-semibold text-gray-500">Total Ingredients</p>
@@ -69,7 +64,6 @@
         <p id="dash-rec-count" class="text-2xl font-bold mt-1 text-primary">0</p>
       </div>
     </div>
-
     <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-2">
       <div class="flex items-center gap-2">
         <i data-lucide="database" class="w-4 h-4 text-emerald-700"></i>
@@ -80,29 +74,37 @@
     </div>
   </main>
 
-  <!-- 2. INGREDIENTS DATABASE -->
+  <!-- 2. INGREDIENTS DATABASE + PENCARIAN -->
   <main id="view-ingredients" class="tab-content p-4 max-w-4xl mx-auto">
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex justify-between items-center mb-3">
       <h2 class="text-lg font-bold">Database Bahan Baku</h2>
       <button onclick="openModal('modal-ingredient')" class="bg-primary text-white p-2.5 rounded-full shadow-md active:scale-95">
         <i data-lucide="plus" class="w-5 h-5"></i>
       </button>
     </div>
+    <div class="relative mb-3">
+      <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3.5 top-3"></i>
+      <input type="text" id="ing-search" oninput="renderIngredientsList()" placeholder="Cari nama bahan atau kategori..." class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs shadow-sm focus:outline-none focus:border-primary">
+    </div>
     <div id="ingredients-list" class="space-y-2.5"></div>
   </main>
 
-  <!-- 3. RECIPE LIBRARY & HPP -->
+  <!-- 3. RECIPE LIBRARY + PENCARIAN -->
   <main id="view-recipes" class="tab-content p-4 max-w-4xl mx-auto">
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex justify-between items-center mb-3">
       <h2 class="text-lg font-bold">Recipe & HPP Library</h2>
       <button onclick="openModal('modal-recipe')" class="bg-primary text-white p-2.5 rounded-full shadow-md active:scale-95">
         <i data-lucide="plus" class="w-5 h-5"></i>
       </button>
     </div>
+    <div class="relative mb-3">
+      <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute left-3.5 top-3"></i>
+      <input type="text" id="rec-search" oninput="renderRecipesList()" placeholder="Cari nama menu resep..." class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs shadow-sm focus:outline-none focus:border-primary">
+    </div>
     <div id="recipes-list" class="space-y-3"></div>
   </main>
 
-  <!-- 4. BATCH PREPARATION CALCULATOR -->
+  <!-- 4. BATCH PREPARATION -->
   <main id="view-batch" class="tab-content p-4 max-w-4xl mx-auto">
     <h2 class="text-lg font-bold mb-4">Batch Preparation Scaling</h2>
     <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
@@ -122,7 +124,6 @@
           <input type="number" id="batch-target-yield" value="2500" oninput="calculateBatchScaling()" class="w-full p-2.5 border rounded-lg mt-1 text-sm font-bold bg-white">
         </div>
       </div>
-
       <div id="batch-result" class="border-t pt-3 hidden">
         <div class="flex justify-between text-xs text-gray-500 mb-2">
           <span>Scaling Factor: <b id="batch-scale-factor" class="text-primary font-bold">1x</b></span>
@@ -133,30 +134,55 @@
     </div>
   </main>
 
-  <!-- 5. MENU ENGINEERING ANALYZER -->
+  <!-- 5. MENU ENGINEERING + FILTER BULAN & TAHUN + DETAIL KATEGORI -->
   <main id="view-menueng" class="tab-content p-4 max-w-4xl mx-auto">
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex justify-between items-center mb-3">
       <h2 class="text-lg font-bold">Menu Engineering</h2>
       <button onclick="generateMonthlyReportPDF()" class="bg-emerald-700 text-white px-3 py-2 rounded-lg shadow-md text-xs font-bold flex items-center gap-1.5 active:scale-95">
-        <i data-lucide="file-text" class="w-4 h-4"></i> Export Report PDF
+        <i data-lucide="file-text" class="w-4 h-4"></i> Export PDF
       </button>
     </div>
 
-    <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm mb-4">
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <select id="filter-month" onchange="renderMenuEngMatrix()" class="p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 shadow-sm">
+        <option value="ALL">Semua Bulan</option>
+        <option value="01">Januari</option>
+        <option value="02">Februari</option>
+        <option value="03">Maret</option>
+        <option value="04">April</option>
+        <option value="05">Mei</option>
+        <option value="06">Juni</option>
+        <option value="07">Juli</option>
+        <option value="08">Agustus</option>
+        <option value="09">September</option>
+        <option value="10">Oktober</option>
+        <option value="11">November</option>
+        <option value="12">Desember</option>
+      </select>
+      <select id="filter-year" onchange="renderMenuEngMatrix()" class="p-2.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 shadow-sm">
+        <option value="ALL">Semua Tahun</option>
+        <option value="2025">2025</option>
+        <option value="2026">2026</option>
+        <option value="2027">2027</option>
+        <option value="2028">2028</option>
+      </select>
+    </div>
+
+    <div class="bg-white p-3 rounded-xl border border-gray-200 shadow-sm mb-3">
       <p class="text-xs font-semibold text-gray-500 mb-2 text-center">Profitability vs Popularity Matrix</p>
-      <div class="h-60 w-full relative">
+      <div class="h-56 w-full relative">
         <canvas id="matrixChart"></canvas>
       </div>
     </div>
 
-    <div id="matrix-summary" class="grid grid-cols-2 gap-2 text-xs"></div>
+    <p class="text-[11px] text-gray-500 mb-2">Ketuk salah satu kotak kategori di bawah untuk melihat daftar menunya:</p>
+    <div id="matrix-summary" class="grid grid-cols-2 gap-2 text-xs mb-3"></div>
+    <div id="quadrant-detail-box" class="hidden bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm space-y-2"></div>
   </main>
 
-  <!-- 6. SETTINGS & GOOGLE SHEETS SYNC -->
+  <!-- 6. SETTINGS -->
   <main id="view-settings" class="tab-content p-4 max-w-4xl mx-auto">
     <h2 class="text-lg font-bold mb-4">Pengaturan & Sinkronisasi Sheets</h2>
-    
-    <!-- BOX GOOGLE SHEETS SYNC -->
     <div class="bg-primary text-white p-4 rounded-xl shadow-md mb-4 space-y-3">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
@@ -165,9 +191,7 @@
         </div>
         <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-semibold">Auto-Sync Aktif</span>
       </div>
-      
       <p class="text-xs text-gray-300">Gunakan tombol di bawah jika ingin memaksa kirim ulang atau tarik data terbaru secara manual:</p>
-      
       <div class="grid grid-cols-2 gap-2 pt-1">
         <button onclick="syncToSheets(false)" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs p-3 rounded-lg flex items-center justify-center gap-1.5 active:scale-95">
           <i data-lucide="upload-cloud" class="w-4 h-4"></i> Kirim ke Sheets
@@ -193,7 +217,6 @@
           <i data-lucide="upload" class="w-4 h-4"></i> Restore Cadangan (JSON)
         </button>
         <input type="file" id="import-file" onchange="importBackupJSON(event)" class="hidden" accept=".json">
-        
         <button onclick="resetAllData()" class="w-full border border-red-200 text-red-600 p-3 rounded-lg font-semibold text-xs mt-4">
           Reset Semua Data
         </button>
@@ -201,9 +224,9 @@
     </div>
   </main>
 
-  <!-- MODAL: ADD / EDIT INGREDIENT -->
+  <!-- MODAL: INGREDIENT -->
   <div id="modal-ingredient" class="modal fixed inset-0 bg-black/60 z-50 justify-center items-end">
-    <div class="bg-white w-full h-[88vh] max-w-2xl rounded-t-2xl p-5 flex flex-col relative animate-slide-up mx-auto">
+    <div class="bg-white w-full h-[88vh] max-w-2xl rounded-t-2xl p-5 flex flex-col relative mx-auto">
       <div class="flex justify-between items-center mb-4">
         <h3 id="modal-ing-title" class="text-base font-bold">Tambah Bahan Baku Baru</h3>
         <button onclick="closeModal('modal-ingredient')"><i data-lucide="x" class="w-6 h-6"></i></button>
@@ -212,7 +235,7 @@
         <input type="hidden" id="ing-edit-id">
         <div>
           <label class="text-xs font-medium text-gray-500">Nama Bahan</label>
-          <input type="text" id="ing-name" class="w-full p-3 border rounded-lg bg-gray-50 text-sm focus:outline-none focus:border-primary" placeholder="Contoh: Powder Ube Toffin">
+          <input type="text" id="ing-name" class="w-full p-3 border rounded-lg bg-gray-50 text-sm" placeholder="Contoh: Powder Ube Toffin">
         </div>
         <div>
           <label class="text-xs font-medium text-gray-500">Kategori</label>
@@ -249,17 +272,33 @@
     </div>
   </div>
 
-  <!-- MODAL: ADD RECIPE -->
+  <!-- MODAL: RECIPE (ADD & EDIT + BULAN/TAHUN) -->
   <div id="modal-recipe" class="modal fixed inset-0 bg-black/60 z-50 justify-center items-end">
     <div class="bg-white w-full h-[90vh] max-w-2xl rounded-t-2xl p-5 flex flex-col relative mx-auto">
       <div class="flex justify-between items-center mb-3">
-        <h3 class="text-base font-bold">Buat Resep Minuman</h3>
+        <h3 id="modal-rec-title" class="text-base font-bold">Buat Resep Minuman</h3>
         <button onclick="closeModal('modal-recipe')"><i data-lucide="x" class="w-6 h-6"></i></button>
       </div>
       <div class="space-y-3 overflow-y-auto pb-12">
+        <input type="hidden" id="rec-edit-id">
         <div>
           <label class="text-xs font-medium text-gray-500">Nama Menu Minuman</label>
           <input type="text" id="rec-name" class="w-full p-2.5 border rounded-lg bg-gray-50 text-sm" placeholder="Ube Matcha Latte">
+        </div>
+        <div>
+          <label class="text-xs font-medium text-gray-500">Periode Laporan (Bulan & Tahun)</label>
+          <div class="grid grid-cols-2 gap-2 mt-1">
+            <select id="rec-month" class="p-2.5 border rounded-lg bg-gray-50 text-xs font-semibold">
+              <option value="01">Januari</option><option value="02">Februari</option><option value="03">Maret</option>
+              <option value="04">April</option><option value="05">Mei</option><option value="06">Juni</option>
+              <option value="07">Juli</option><option value="08">Agustus</option><option value="09">September</option>
+              <option value="10">Oktober</option><option value="11">November</option><option value="12">Desember</option>
+            </select>
+            <select id="rec-year" class="p-2.5 border rounded-lg bg-gray-50 text-xs font-semibold">
+              <option value="2025">2025</option><option value="2026">2026</option>
+              <option value="2027">2027</option><option value="2028">2028</option>
+            </select>
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
           <div>
@@ -267,11 +306,10 @@
             <input type="text" id="rec-price" oninput="calcRecipeHPPPreview()" class="w-full p-2.5 border rounded-lg bg-gray-50 text-sm" placeholder="35.000">
           </div>
           <div>
-            <label class="text-xs font-medium text-gray-500">Estimasi Terjual / Bln</label>
+            <label class="text-xs font-medium text-gray-500">Terjual Bulan Ini</label>
             <input type="number" id="rec-sales" class="w-full p-2.5 border rounded-lg bg-gray-50 text-sm" placeholder="100">
           </div>
         </div>
-
         <div class="border-t pt-3">
           <label class="text-xs font-bold text-gray-700 block mb-1">Komposisi Bahan Baku (HPP)</label>
           <div class="flex gap-2">
@@ -283,23 +321,20 @@
           </div>
           <ul id="rec-temp-ing-list" class="mt-2 space-y-1.5 text-xs bg-gray-50 p-3 rounded-lg border hidden"></ul>
         </div>
-
         <div>
           <label class="text-xs font-medium text-gray-500">Langkah Persiapan (SOP Barista)</label>
           <textarea id="rec-steps" rows="3" class="w-full p-2.5 border rounded-lg bg-gray-50 text-xs" placeholder="1. Timbang bahan sesuai takaran&#10;2. Aduk rata dan sajikan..."></textarea>
         </div>
-
         <div class="bg-primary text-white p-3.5 rounded-xl space-y-1 text-xs">
           <div class="flex justify-between"><span>Total HPP (Food Cost):</span><b id="rec-preview-hpp">Rp 0</b></div>
           <div class="flex justify-between"><span>Gross Profit Margin:</span><b id="rec-preview-margin">0%</b></div>
         </div>
-
         <button onclick="saveRecipe()" class="w-full bg-primary text-white p-3.5 rounded-xl font-bold text-sm">Simpan Resep & Sync ke Sheets</button>
       </div>
     </div>
   </div>
 
-  <!-- BOTTOM NAVIGATION BAR -->
+  <!-- BOTTOM NAVIGATION -->
   <nav class="fixed bottom-0 w-full bg-white border-t flex justify-around p-2 pb-6 z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
     <button onclick="switchTab('dashboard')" class="nav-btn text-primary flex flex-col items-center w-14" data-target="dashboard">
       <i data-lucide="home" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Home</span>
@@ -317,19 +352,34 @@
       <i data-lucide="trending-up" class="w-5 h-5"></i><span class="text-[10px] mt-1 font-semibold">Menu Eng</span>
     </button>
   </nav>
-
-  <!-- JAVASCRIPT LOGIC -->
   <script>
     lucide.createIcons();
 
-    // GOOGLE APPS SCRIPT DATABASE ENDPOINT
     const GAS_URL = "https://script.google.com/macros/s/AKfycbwftS8e89ttxlhv9ZmJ9zqm000lMTs1mzB_cTLiPO6L68WaotWHQQScmPJsUGgjqjWo/exec";
+
+    const MONTH_NAMES = {
+      '01': 'Januari', '02': 'Februari', '03': 'Maret', '04': 'April',
+      '05': 'Mei', '06': 'Juni', '07': 'Juli', '08': 'Agustus',
+      '09': 'September', '10': 'Oktober', '11': 'November', '12': 'Desember'
+    };
+
+    function getDefaultPeriod() {
+      const now = new Date();
+      const y = String(now.getFullYear());
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      return { year: y, month: m, full: `${y}-${m}` };
+    }
+
+    function formatPeriodLabel(periodStr) {
+      if (!periodStr || !periodStr.includes('-')) return '-';
+      const [y, m] = periodStr.split('-');
+      return `${MONTH_NAMES[m] || m} ${y}`;
+    }
 
     function parseCleanNumber(val) {
       if (val === null || val === undefined || val === '') return 0;
       if (typeof val === 'number') return val;
-      let str = val.toString().trim();
-      str = str.replace(/\./g, '').replace(/,/g, '.');
+      let str = val.toString().trim().replace(/\./g, '').replace(/,/g, '.');
       return parseFloat(str) || 0;
     }
 
@@ -340,6 +390,7 @@
     };
     let tempRecipeIngredients = [];
     let chartInstance = null;
+    let activeQuadrant = null;
 
     function setSyncStatus(state, label, detailMsg) {
       const dot = document.getElementById('sync-dot');
@@ -361,41 +412,40 @@
     function loadData() {
       const saved = localStorage.getItem('beverage_intel_db');
       if (saved) {
-        try { db = JSON.parse(saved); } catch(e) { console.error(e); }
+        try { db = JSON.parse(saved); } catch (e) { console.error(e); }
       }
       if (!db.settings) db.settings = { bizName: 'Qose Coffee' };
       if (!db.ingredients) db.ingredients = [];
       if (!db.recipes) db.recipes = [];
 
+      const defP = getDefaultPeriod().full;
+      db.recipes.forEach(r => { if (!r.period) r.period = defP; });
+
       document.getElementById('setting-biz-name').value = db.settings.bizName || 'Qose Coffee';
       updateUI();
-
-      // Otomatis tarik data terbaru dari Google Sheets saat halaman dibuka
       syncFromSheets(true);
     }
 
     function saveData(shouldSyncCloud = true) {
       localStorage.setItem('beverage_intel_db', JSON.stringify(db));
       updateUI();
-      if (shouldSyncCloud) {
-        syncToSheets(true);
-      }
+      if (shouldSyncCloud) syncToSheets(true);
     }
 
-    // --- GOOGLE SHEETS SYNC (READ / PULL) ---
     async function syncFromSheets(isAuto = false) {
       setSyncStatus('loading', 'Syncing...', 'Mengambil data terbaru dari Google Sheets...');
       try {
         const res = await fetch(GAS_URL);
-        if (!res.ok) throw new Error('Network response was not ok');
+        if (!res.ok) throw new Error('Network error');
         const cloudDb = await res.json();
 
         const cloudHasData = (cloudDb.ingredients && cloudDb.ingredients.length > 0) || (cloudDb.recipes && cloudDb.recipes.length > 0);
         const localHasData = (db.ingredients && db.ingredients.length > 0) || (db.recipes && db.recipes.length > 0);
 
         if (cloudHasData) {
+          const defP = getDefaultPeriod().full;
           db.ingredients = cloudDb.ingredients || [];
-          db.recipes = cloudDb.recipes || [];
+          db.recipes = (cloudDb.recipes || []).map(r => ({ ...r, period: r.period || defP }));
           if (cloudDb.settings && cloudDb.settings.bizName) {
             db.settings.bizName = cloudDb.settings.bizName;
             document.getElementById('setting-biz-name').value = db.settings.bizName;
@@ -406,7 +456,6 @@
           setSyncStatus('ok', 'Sheets: Aktif', `Tersinkron dengan Google Sheets (${timeNow})`);
           if (!isAuto) alert('Data terbaru berhasil ditarik dari Google Sheets!');
         } else if (!cloudHasData && localHasData) {
-          // Jika Sheets masih kosong tapi HP sudah punya data lokal, otomatis upload data HP ke Sheets
           await syncToSheets(true);
         } else {
           setSyncStatus('ok', 'Sheets: Siap', 'Terhubung ke Google Sheets (Belum ada data tersimpan).');
@@ -415,11 +464,10 @@
       } catch (err) {
         console.error(err);
         setSyncStatus('err', 'Offline Mode', 'Gagal terhubung ke Google Sheets. Menggunakan penyimpanan lokal.');
-        if (!isAuto) alert('Gagal menarik data dari Google Sheets. Pastikan koneksi internet stabil.');
+        if (!isAuto) alert('Gagal menarik data dari Google Sheets. Periksa koneksi internet Anda.');
       }
     }
 
-    // --- GOOGLE SHEETS SYNC (WRITE / PUSH) ---
     async function syncToSheets(isAuto = false) {
       setSyncStatus('loading', 'Menyimpan...', 'Mengirim data ke Google Sheets...');
       try {
@@ -428,7 +476,7 @@
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(db)
         });
-        if (!res.ok) throw new Error('Failed to post');
+        if (!res.ok) throw new Error('Post error');
         const result = await res.json();
         if (result.status === 'success') {
           const timeNow = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -449,7 +497,6 @@
     function switchTab(tabId) {
       document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
       document.getElementById(`view-${tabId}`).classList.add('active');
-      
       document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.remove('text-primary'); btn.classList.add('text-gray-400');
       });
@@ -458,24 +505,43 @@
         activeBtn.classList.add('text-primary');
         activeBtn.classList.remove('text-gray-400');
       }
-
       if (tabId === 'batch') populateBatchSelect();
       if (tabId === 'menueng') renderMenuEngMatrix();
     }
 
     function openModal(id) {
       document.getElementById(id).classList.add('active');
-      if (id === 'modal-recipe') populateIngredientSelect();
+      if (id === 'modal-recipe') {
+        populateIngredientSelect();
+        if (!document.getElementById('rec-edit-id').value) {
+          const def = getDefaultPeriod();
+          document.getElementById('rec-month').value = def.month;
+          document.getElementById('rec-year').value = def.year;
+        }
+      }
     }
+
     function closeModal(id) {
       document.getElementById(id).classList.remove('active');
       if (id === 'modal-ingredient') {
         document.getElementById('ing-edit-id').value = '';
+        document.getElementById('ing-name').value = '';
+        document.getElementById('ing-price').value = '';
+        document.getElementById('ing-size').value = '';
         document.getElementById('modal-ing-title').innerText = 'Tambah Bahan Baku Baru';
       }
       if (id === 'modal-recipe') {
+        document.getElementById('rec-edit-id').value = '';
+        document.getElementById('rec-name').value = '';
+        document.getElementById('rec-price').value = '';
+        document.getElementById('rec-sales').value = '';
+        document.getElementById('rec-steps').value = '';
+        document.getElementById('rec-ing-select').value = '';
+        document.getElementById('rec-ing-qty').value = '';
+        document.getElementById('modal-rec-title').innerText = 'Buat Resep Minuman';
         tempRecipeIngredients = [];
         renderTempIngredients();
+        calcRecipeHPPPreview();
       }
     }
 
@@ -498,21 +564,14 @@
       if (!name || isNaN(price) || isNaN(size) || size <= 0) return alert('Mohon isi nama, harga beli, dan ukuran kemasan!');
 
       const unitCost = price / size;
-
       if (editId) {
         const idx = db.ingredients.findIndex(i => i.id == editId);
-        if (idx !== -1) {
-          db.ingredients[idx] = { ...db.ingredients[idx], name, category, price, size, unit, unitCost };
-        }
+        if (idx !== -1) db.ingredients[idx] = { ...db.ingredients[idx], name, category, price, size, unit, unitCost };
       } else {
         db.ingredients.push({ id: Date.now(), name, category, price, size, unit, unitCost });
       }
-
       saveData(true);
       closeModal('modal-ingredient');
-      document.getElementById('ing-name').value = '';
-      document.getElementById('ing-price').value = '';
-      document.getElementById('ing-size').value = '';
     }
 
     function editIngredient(id) {
@@ -550,22 +609,16 @@
       if (!selId || isNaN(qty) || qty <= 0) return alert('Pilih bahan dan masukkan takaran Qty!');
 
       const ing = db.ingredients.find(i => i.id == selId);
-      
       const existingIdx = tempRecipeIngredients.findIndex(t => t.ingredientId == ing.id);
       if (existingIdx !== -1) {
         tempRecipeIngredients[existingIdx].qty += qty;
         tempRecipeIngredients[existingIdx].cost = tempRecipeIngredients[existingIdx].unitCost * tempRecipeIngredients[existingIdx].qty;
       } else {
         tempRecipeIngredients.push({
-          ingredientId: ing.id,
-          name: ing.name,
-          unit: ing.unit,
-          unitCost: ing.unitCost,
-          qty: qty,
-          cost: ing.unitCost * qty
+          ingredientId: ing.id, name: ing.name, unit: ing.unit,
+          unitCost: ing.unitCost, qty: qty, cost: ing.unitCost * qty
         });
       }
-
       document.getElementById('rec-ing-qty').value = '';
       renderTempIngredients();
       calcRecipeHPPPreview();
@@ -593,13 +646,16 @@
       const price = parseCleanNumber(document.getElementById('rec-price').value);
       const totalHPP = tempRecipeIngredients.reduce((sum, item) => sum + item.cost, 0);
       const margin = price > 0 ? (((price - totalHPP) / price) * 100).toFixed(1) : 0;
-      
       document.getElementById('rec-preview-hpp').innerText = formatIDR(totalHPP);
       document.getElementById('rec-preview-margin').innerText = `${margin}%`;
     }
 
     function saveRecipe() {
+      const editId = document.getElementById('rec-edit-id').value;
       const name = document.getElementById('rec-name').value.trim();
+      const month = document.getElementById('rec-month').value;
+      const year = document.getElementById('rec-year').value;
+      const period = `${year}-${month}`;
       const sellingPrice = parseCleanNumber(document.getElementById('rec-price').value);
       const salesVolume = parseInt(document.getElementById('rec-sales').value) || 0;
       const steps = document.getElementById('rec-steps').value;
@@ -626,22 +682,44 @@
 
       const totalCost = tempRecipeIngredients.reduce((sum, item) => sum + item.cost, 0);
 
-      db.recipes.push({
-        id: Date.now(),
-        name, sellingPrice, salesVolume, steps,
-        ingredients: [...tempRecipeIngredients],
-        totalCost
-      });
+      if (editId) {
+        const idx = db.recipes.findIndex(r => r.id == editId);
+        if (idx !== -1) {
+          db.recipes[idx] = {
+            ...db.recipes[idx], name, period, sellingPrice, salesVolume, steps,
+            ingredients: [...tempRecipeIngredients], totalCost
+          };
+        }
+      } else {
+        db.recipes.push({
+          id: Date.now(), name, period, sellingPrice, salesVolume, steps,
+          ingredients: [...tempRecipeIngredients], totalCost
+        });
+      }
 
       saveData(true);
       closeModal('modal-recipe');
-      document.getElementById('rec-name').value = '';
-      document.getElementById('rec-price').value = '';
-      document.getElementById('rec-sales').value = '';
-      document.getElementById('rec-steps').value = '';
-      document.getElementById('rec-ing-select').value = '';
-      document.getElementById('rec-ing-qty').value = '';
-      tempRecipeIngredients = [];
+    }
+
+    function editRecipe(id) {
+      const r = db.recipes.find(item => item.id == id);
+      if (!r) return;
+      const def = getDefaultPeriod();
+      const [y, m] = (r.period && r.period.includes('-')) ? r.period.split('-') : [def.year, def.month];
+
+      document.getElementById('rec-edit-id').value = r.id;
+      document.getElementById('rec-name').value = r.name;
+      document.getElementById('rec-year').value = y;
+      document.getElementById('rec-month').value = m;
+      document.getElementById('rec-price').value = r.sellingPrice;
+      document.getElementById('rec-sales').value = r.salesVolume;
+      document.getElementById('rec-steps').value = r.steps || '';
+      document.getElementById('modal-rec-title').innerText = 'Edit Resep Minuman';
+
+      tempRecipeIngredients = (r.ingredients || []).map(item => ({ ...item }));
+      renderTempIngredients();
+      calcRecipeHPPPreview();
+      openModal('modal-recipe');
     }
 
     function deleteRecipe(id) {
@@ -667,7 +745,6 @@
       const recipe = db.recipes.find(r => r.id == recipeId);
       const stdYield = parseFloat(document.getElementById('batch-std-yield').value) || 1000;
       const targetYield = parseFloat(document.getElementById('batch-target-yield').value) || 1;
-      
       const scaleFactor = targetYield / stdYield;
       document.getElementById('batch-scale-factor').innerText = `${scaleFactor.toFixed(2)}x`;
 
@@ -679,7 +756,6 @@
         const scaledQty = item.qty * scaleFactor;
         const scaledCost = item.cost * scaleFactor;
         scaledTotalCost += scaledCost;
-
         listContainer.innerHTML += `
           <div class="flex justify-between py-0.5 border-b last:border-0">
             <span>${item.name}</span>
@@ -691,18 +767,49 @@
       resultBox.classList.remove('hidden');
     }
 
+    // --- MENU ENGINEERING HELPERS ---
+    function getFilteredRecipesForMenuEng() {
+      const fMonth = document.getElementById('filter-month').value;
+      const fYear = document.getElementById('filter-year').value;
+      return db.recipes.filter(r => {
+        const p = r.period || getDefaultPeriod().full;
+        const [y, m] = p.split('-');
+        const matchMonth = (fMonth === 'ALL' || m === fMonth);
+        const matchYear = (fYear === 'ALL' || y === fYear);
+        return matchMonth && matchYear;
+      });
+    }
+
+    function classifyMenuRecipe(r) {
+      const margin = r.sellingPrice - r.totalCost;
+      const totalProfit = margin * r.salesVolume;
+      if (r.salesVolume >= 50 && margin >= 15000) {
+        return { code: 'STAR', label: 'STAR (High/High)', color: '#16a34a', badgeBg: 'bg-green-100 text-green-800', tip: 'Pertahankan kualitas & jadikan menu andalan', margin, totalProfit };
+      } else if (r.salesVolume >= 50 && margin < 15000) {
+        return { code: 'PLOWHORSE', label: 'PLOWHORSE (High/Low)', color: '#f59e0b', badgeBg: 'bg-amber-100 text-amber-800', tip: 'Evaluasi HPP bahan atau naikkan harga bertahap', margin, totalProfit };
+      } else if (r.salesVolume < 50 && margin >= 15000) {
+        return { code: 'PUZZLE', label: 'PUZZLE (Low/High)', color: '#3b82f6', badgeBg: 'bg-blue-100 text-blue-800', tip: 'Dorong promosi & rekomendasi upselling barista', margin, totalProfit };
+      } else {
+        return { code: 'DOG', label: 'DOG (Low/Low)', color: '#ef4444', badgeBg: 'bg-red-100 text-red-800', tip: 'Pertimbangkan ganti resep atau evaluasi menu', margin, totalProfit };
+      }
+    }
+
     function renderMenuEngMatrix() {
       const ctx = document.getElementById('matrixChart').getContext('2d');
       if (chartInstance) chartInstance.destroy();
 
-      if (db.recipes.length === 0) {
-        document.getElementById('matrix-summary').innerHTML = '<p class="col-span-2 text-center text-gray-400">Belum ada resep tersimpan.</p>';
+      const filtered = getFilteredRecipesForMenuEng();
+      const detailBox = document.getElementById('quadrant-detail-box');
+
+      if (filtered.length === 0) {
+        document.getElementById('matrix-summary').innerHTML = '<p class="col-span-2 text-center text-gray-400 py-3">Tidak ada data resep untuk periode yang dipilih.</p>';
+        detailBox.classList.add('hidden');
         return;
       }
 
-      const dataset = db.recipes.map(r => {
-        const margin = r.sellingPrice - r.totalCost;
-        return { x: r.salesVolume, y: margin, label: r.name };
+      const dataset = filtered.map(r => {
+        const cls = classifyMenuRecipe(r);
+        return { x: r.salesVolume, y: cls.margin, label: r.name, cat: cls.code, color: cls.color };
       });
 
       chartInstance = new Chart(ctx, {
@@ -711,7 +818,7 @@
           datasets: [{
             label: 'Menu Minuman',
             data: dataset,
-            backgroundColor: '#243B35',
+            backgroundColor: dataset.map(d => d.color),
             pointRadius: 7
           }]
         },
@@ -719,7 +826,8 @@
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            tooltip: { callbacks: { label: ctx => `${ctx.raw.label}: ${ctx.raw.x} terjual | Margin ${formatIDR(ctx.raw.y)}` } }
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => `[${ctx.raw.cat}] ${ctx.raw.label}: ${ctx.raw.x} terjual | Margin ${formatIDR(ctx.raw.y)}` } }
           },
           scales: {
             x: { title: { display: true, text: 'Popularitas (Unit Terjual)', font: { size: 10 } } },
@@ -728,27 +836,74 @@
         }
       });
 
-      let star = 0, plow = 0, puzzle = 0, dog = 0;
-      db.recipes.forEach(r => {
-        const margin = r.sellingPrice - r.totalCost;
-        if (r.salesVolume >= 50 && margin >= 15000) star++;
-        else if (r.salesVolume >= 50 && margin < 15000) plow++;
-        else if (r.salesVolume < 50 && margin >= 15000) puzzle++;
-        else dog++;
+      const counts = { STAR: 0, PLOWHORSE: 0, PUZZLE: 0, DOG: 0 };
+      filtered.forEach(r => { counts[classifyMenuRecipe(r).code]++; });
+
+      const cards = [
+        { code: 'STAR', title: 'STAR (High/High)', border: 'border-l-green-600', count: counts.STAR },
+        { code: 'PLOWHORSE', title: 'PLOWHORSE (High/Low)', border: 'border-l-amber-500', count: counts.PLOWHORSE },
+        { code: 'PUZZLE', title: 'PUZZLE (Low/High)', border: 'border-l-blue-500', count: counts.PUZZLE },
+        { code: 'DOG', title: 'DOG (Low/Low)', border: 'border-l-red-500', count: counts.DOG }
+      ];
+
+      document.getElementById('matrix-summary').innerHTML = cards.map(c => `
+        <button onclick="showQuadrantDetail('${c.code}')" class="text-left bg-white p-2.5 rounded-lg border border-l-4 ${c.border} shadow-sm active:scale-95 transition ${activeQuadrant === c.code ? 'ring-2 ring-primary' : ''}">
+          <div class="flex justify-between items-center">
+            <p class="font-bold text-gray-500">${c.title}</p>
+            <span class="text-[10px] text-primary font-semibold">Lihat ▾</span>
+          </div>
+          <p class="text-lg font-bold mt-0.5">${c.count}</p>
+        </button>`).join('');
+
+      if (activeQuadrant) showQuadrantDetail(activeQuadrant);
+    }
+
+    function showQuadrantDetail(code) {
+      activeQuadrant = code;
+      const filtered = getFilteredRecipesForMenuEng();
+      const matched = filtered.filter(r => classifyMenuRecipe(r).code === code);
+      const detailBox = document.getElementById('quadrant-detail-box');
+
+      document.querySelectorAll('#matrix-summary button').forEach(btn => {
+        if (btn.getAttribute('onclick').includes(`'${code}'`)) btn.classList.add('ring-2', 'ring-primary');
+        else btn.classList.remove('ring-2', 'ring-primary');
       });
 
-      document.getElementById('matrix-summary').innerHTML = `
-        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-green-600 shadow-sm">
-          <p class="font-bold text-gray-500">STAR (High/High)</p><p class="text-lg font-bold">${star}</p>
+      detailBox.classList.remove('hidden');
+      if (matched.length === 0) {
+        detailBox.innerHTML = `
+          <div class="flex justify-between items-center">
+            <h4 class="font-bold text-xs text-primary">Daftar Menu Kategori ${code}</h4>
+            <button onclick="activeQuadrant=null; document.getElementById('quadrant-detail-box').classList.add('hidden');" class="text-xs text-gray-400">Tutup ✕</button>
+          </div>
+          <p class="text-xs text-gray-400 py-2">Belum ada menu yang masuk kategori ${code} pada periode ini.</p>`;
+        return;
+      }
+
+      const tip = classifyMenuRecipe(matched[0]).tip;
+      detailBox.innerHTML = `
+        <div class="flex justify-between items-center border-b pb-2">
+          <div>
+            <h4 class="font-bold text-xs text-primary">Daftar Menu Kategori ${code} (${matched.length})</h4>
+            <p class="text-[11px] text-gray-500">${tip}</p>
+          </div>
+          <button onclick="activeQuadrant=null; document.getElementById('quadrant-detail-box').classList.add('hidden');" class="text-xs text-gray-400 p-1">✕</button>
         </div>
-        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-amber-500 shadow-sm">
-          <p class="font-bold text-gray-500">PLOWHORSE (High/Low)</p><p class="text-lg font-bold">${plow}</p>
-        </div>
-        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-blue-500 shadow-sm">
-          <p class="font-bold text-gray-500">PUZZLE (Low/High)</p><p class="text-lg font-bold">${puzzle}</p>
-        </div>
-        <div class="bg-white p-2.5 rounded-lg border border-l-4 border-l-red-500 shadow-sm">
-          <p class="font-bold text-gray-500">DOG (Low/Low)</p><p class="text-lg font-bold">${dog}</p>
+        <div class="space-y-2 pt-1">
+          ${matched.map(r => {
+            const cls = classifyMenuRecipe(r);
+            return `
+              <div class="p-2.5 bg-gray-50 rounded-lg border border-gray-200 flex justify-between items-center text-xs">
+                <div>
+                  <p class="font-bold text-gray-900">${r.name}</p>
+                  <p class="text-[11px] text-gray-500">${formatPeriodLabel(r.period)} • Terjual: <b>${r.salesVolume}</b></p>
+                </div>
+                <div class="text-right">
+                  <p class="font-bold text-primary">Margin: ${formatIDR(cls.margin)}</p>
+                  <p class="text-[11px] text-emerald-700 font-semibold">Profit: ${formatIDR(cls.totalProfit)}</p>
+                </div>
+              </div>`;
+          }).join('')}
         </div>`;
     }
 
@@ -782,34 +937,52 @@
     }
 
     function generateMonthlyReportPDF() {
+      const filtered = getFilteredRecipesForMenuEng();
+      if (filtered.length === 0) return alert('Tidak ada data menu pada periode yang dipilih untuk dicetak.');
+
+      const fMonth = document.getElementById('filter-month').value;
+      const fYear = document.getElementById('filter-year').value;
+      const monthLabel = fMonth === 'ALL' ? 'Semua Bulan' : MONTH_NAMES[fMonth];
+      const yearLabel = fYear === 'ALL' ? 'Semua Tahun' : fYear;
+
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
-      doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(36, 59, 53);
-      doc.text(`${(db.settings.bizName || 'QOSE COFFEE').toUpperCase()} - MONTHLY MENU ENGINEERING`, 14, 20);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(36, 59, 53);
+      doc.text(`${(db.settings.bizName || 'QOSE COFFEE').toUpperCase()} - MENU ENGINEERING REPORT`, 14, 20);
       doc.setFontSize(10); doc.setFont("helvetica", "normal");
-      doc.text(`Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
+      doc.text(`Periode: ${monthLabel} ${yearLabel} | Tanggal Cetak: ${new Date().toLocaleDateString('id-ID')}`, 14, 27);
 
-      const tableData = db.recipes.map((r, i) => {
-        const margin = r.sellingPrice - r.totalCost;
-        const totalProfit = margin * r.salesVolume;
-        return [i + 1, r.name, formatIDR(r.sellingPrice), formatIDR(r.totalCost), r.salesVolume, formatIDR(totalProfit)];
+      const tableData = filtered.map((r, i) => {
+        const cls = classifyMenuRecipe(r);
+        return [
+          i + 1,
+          r.name,
+          cls.code,
+          formatIDR(r.sellingPrice),
+          formatIDR(r.totalCost),
+          formatIDR(cls.margin),
+          r.salesVolume,
+          formatIDR(cls.totalProfit)
+        ];
       });
 
       doc.autoTable({
         startY: 34,
-        head: [['No', 'Nama Menu', 'Harga Jual', 'HPP', 'Terjual', 'Total Profit']],
+        head: [['No', 'Nama Menu', 'Kategori', 'Harga Jual', 'HPP', 'Margin/Cup', 'Terjual', 'Total Profit']],
         body: tableData,
+        styles: { fontSize: 8 },
         headStyles: { fillColor: [36, 59, 53] }
       });
 
-      doc.save(`Menu_Engineering_${(db.settings.bizName || 'Qose').replace(/\s+/g, '_')}.pdf`);
+      doc.save(`Menu_Engineering_${monthLabel}_${yearLabel}.pdf`);
     }
 
     function saveSettings() {
       db.settings.bizName = document.getElementById('setting-biz-name').value;
       saveData(true);
     }
+
     function exportBackupJSON() {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
       const downloadAnchor = document.createElement('a');
@@ -819,6 +992,7 @@
       downloadAnchor.click();
       downloadAnchor.remove();
     }
+
     function importBackupJSON(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -828,10 +1002,11 @@
           db = JSON.parse(evt.target.result);
           saveData(true);
           alert('Data berhasil di-restore dan disinkronkan ke Sheets!');
-        } catch(err) { alert('Format file JSON tidak valid!'); }
+        } catch (err) { alert('Format file JSON tidak valid!'); }
       };
       reader.readAsText(file);
     }
+
     function resetAllData() {
       if (confirm('Apakah Anda yakin ingin menghapus SELURUH data di HP dan Google Sheets?')) {
         localStorage.removeItem('beverage_intel_db');
@@ -840,15 +1015,20 @@
       }
     }
 
-    function updateUI() {
-      document.getElementById('dash-ing-count').innerText = db.ingredients.length;
-      document.getElementById('dash-rec-count').innerText = db.recipes.length;
-
+    function renderIngredientsList() {
+      const query = (document.getElementById('ing-search')?.value || '').toLowerCase().trim();
       const ingContainer = document.getElementById('ingredients-list');
+      const filtered = db.ingredients.filter(i =>
+        (i.name || '').toLowerCase().includes(query) ||
+        (i.category || '').toLowerCase().includes(query)
+      );
+
       if (db.ingredients.length === 0) {
         ingContainer.innerHTML = '<p class="text-xs text-center text-gray-400 py-6">Belum ada bahan baku. Klik + untuk menambahkan.</p>';
+      } else if (filtered.length === 0) {
+        ingContainer.innerHTML = `<p class="text-xs text-center text-gray-400 py-6">Bahan "${query}" tidak ditemukan.</p>`;
       } else {
-        ingContainer.innerHTML = db.ingredients.map(i => `
+        ingContainer.innerHTML = filtered.map(i => `
           <div class="bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center">
             <div>
               <p class="font-bold text-sm text-gray-900">${i.name}</p>
@@ -866,24 +1046,39 @@
             </div>
           </div>`).join('');
       }
+      lucide.createIcons();
+    }
 
+    function renderRecipesList() {
+      const query = (document.getElementById('rec-search')?.value || '').toLowerCase().trim();
       const recContainer = document.getElementById('recipes-list');
+      const filtered = db.recipes.filter(r =>
+        (r.name || '').toLowerCase().includes(query) ||
+        formatPeriodLabel(r.period).toLowerCase().includes(query)
+      );
+
       if (db.recipes.length === 0) {
         recContainer.innerHTML = '<p class="text-xs text-center text-gray-400 py-6">Belum ada resep. Klik + untuk membuat resep.</p>';
+      } else if (filtered.length === 0) {
+        recContainer.innerHTML = `<p class="text-xs text-center text-gray-400 py-6">Resep "${query}" tidak ditemukan.</p>`;
       } else {
-        recContainer.innerHTML = db.recipes.map(r => {
+        recContainer.innerHTML = filtered.map(r => {
           const foodCostPct = r.sellingPrice > 0 ? ((r.totalCost / r.sellingPrice) * 100).toFixed(1) : 0;
           return `
             <div class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
               <div class="flex justify-between items-start mb-2">
                 <div>
-                  <h3 class="font-bold text-base text-primary">${r.name}</h3>
-                  <p class="text-xs text-gray-400">Harga Jual: ${formatIDR(r.sellingPrice)}</p>
+                  <div class="flex items-center gap-2">
+                    <h3 class="font-bold text-base text-primary">${r.name}</h3>
+                    <span class="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-semibold">${formatPeriodLabel(r.period)}</span>
+                  </div>
+                  <p class="text-xs text-gray-400 mt-0.5">Harga Jual: ${formatIDR(r.sellingPrice)} • Terjual: ${r.salesVolume}</p>
                 </div>
-                <div class="flex items-center gap-1.5">
-                  <button onclick="generateSOPPDF(${r.id})" class="bg-gray-100 text-primary border border-gray-300 px-2.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
-                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> SOP PDF
+                <div class="flex items-center gap-1">
+                  <button onclick="generateSOPPDF(${r.id})" class="bg-gray-100 text-primary border border-gray-300 px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1">
+                    <i data-lucide="file-text" class="w-3.5 h-3.5"></i> SOP
                   </button>
+                  <button onclick="editRecipe(${r.id})" class="p-1.5 text-gray-500 hover:text-primary"><i data-lucide="edit-2" class="w-4 h-4"></i></button>
                   <button onclick="deleteRecipe(${r.id})" class="p-1.5 text-red-500 hover:text-red-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                 </div>
               </div>
@@ -895,6 +1090,16 @@
         }).join('');
       }
       lucide.createIcons();
+    }
+
+    function updateUI() {
+      document.getElementById('dash-ing-count').innerText = db.ingredients.length;
+      document.getElementById('dash-rec-count').innerText = db.recipes.length;
+      renderIngredientsList();
+      renderRecipesList();
+      if (document.getElementById('view-menueng').classList.contains('active')) {
+        renderMenuEngMatrix();
+      }
     }
 
     window.onload = loadData;
