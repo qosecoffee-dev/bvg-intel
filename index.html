@@ -33,7 +33,7 @@
   </header>
 
   <!-- Main Content Container -->
-  <main id="mainContent" class="max-w-3xl mx-auto px-3 pt-3 pb-32">
+  <main id="mainContent" class="max-w-3xl mx-auto px-3 pt-3 pb-44">
     <div class="text-center py-16 text-stone-400 text-sm">Memuat sistem operasional bar...</div>
   </main>
 
@@ -51,8 +51,8 @@
   <!-- Toast Notification -->
   <div id="toastBox" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-full bg-stone-900 text-white text-xs font-semibold shadow-lg"></div>
 
-  <!-- Bottom Navigation (Raised padding for Netlify badge safety) -->
-  <nav class="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-stone-200 shadow-lg pb-4 pt-1.5 px-1">
+  <!-- Bottom Navigation (Raised above Netlify badge) -->
+  <nav class="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-stone-200 shadow-lg pb-14 pt-2 px-1">
     <div class="max-w-3xl mx-auto grid grid-cols-5 gap-1 text-center">
       <button onclick="switchTab('home')" data-tab="home" class="nav-btn flex flex-col items-center py-1 rounded-lg text-amber-700 font-bold">
         <span class="text-lg leading-none">🏠</span>
@@ -77,7 +77,8 @@
     </div>
   </nav>
 
-  <!-- Modular Scripts -->
+  <!-- Config & Modular Scripts -->
+  <script src="config.js"></script>
   <script src="app-core.js"></script>
   <script src="app-inventory.js"></script>
   <script src="app-po-pdf.js"></script>
