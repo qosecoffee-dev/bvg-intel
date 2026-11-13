@@ -329,11 +329,40 @@ function switchTab(tab) {
 function renderCurrentTab() {
   const main = document.getElementById('mainContent');
   if (!main) return;
+
+  // Pertahankan elemen input pencarian & fokus kursor agar keyboard iPhone tidak tertutup saat mengetik
+  const active = document.activeElement;
+  let focusSelector = null;
+  let selStart = null;
+  let selEnd = null;
+  if (active && main.contains(active) && active.tagName === 'INPUT' && active.type === 'text') {
+    if (active.id) {
+      focusSelector = '#' + active.id;
+    } else if (active.placeholder) {
+      focusSelector = `input[type="text"][placeholder="${active.placeholder.replace(/"/g, '\\"')}"]`;
+    }
+    try {
+      selStart = active.selectionStart;
+      selEnd = active.selectionEnd;
+    } catch (e) {}
+  }
+
   if (STATE.activeTab === 'home') renderHomeTab(main);
   else if (STATE.activeTab === 'daily' && typeof renderDailyTab === 'function') renderDailyTab(main);
   else if (STATE.activeTab === 'parstock' && typeof renderParStockTab === 'function') renderParStockTab(main);
   else if (STATE.activeTab === 'po' && typeof renderPoVendorTab === 'function') renderPoVendorTab(main);
   else if (STATE.activeTab === 'master' && typeof renderMasterTab === 'function') renderMasterTab(main);
+
+  if (focusSelector && active) {
+    const nextEl = main.querySelector(focusSelector);
+    if (nextEl) {
+      nextEl.replaceWith(active);
+      active.focus({ preventScroll: true });
+      if (selStart !== null && typeof active.setSelectionRange === 'function') {
+        try { active.setSelectionRange(selStart, selEnd); } catch (e) {}
+      }
+    }
+  }
 }
 
 function renderHomeTab(main) {
