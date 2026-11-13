@@ -76,7 +76,7 @@ async function saveDailyBatchAction() {
       inQty: Number(rec.inQty) || 0,
       outQty: Number(rec.outQty) || 0
     };
-  }).filter(e => e.inQty !== 0 || e.outQty !== 0 || STATE.invDaily.some(r => r.date === dateStr && String(r.ingId) === String(e.ingId)));
+  }).filter(e => e.inQty !== 0 || e.outQty !== 0 || STATE.invDaily.some(r => String(r.date) === dateStr && String(r.ingId) === String(e.ingId)));
 
   const ok = await postToBackend({
     action: 'saveDailyBatch',
@@ -132,7 +132,6 @@ function renderDailyTab(main) {
     return matchCat && matchQ;
   });
 
-  // Group by subCategory preserving Master Ingredients order
   const groups = [];
   const groupMap = {};
   filtered.forEach(ing => {
@@ -146,7 +145,6 @@ function renderDailyTab(main) {
   const totalValueSoAll = Object.values(summaryMap).reduce((acc, r) => acc + (Number(r.valueSo) || 0), 0);
 
   main.innerHTML = `
-    <!-- Date Picker & PDF Actions -->
     <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
       <div class="flex items-center justify-between">
         <div>
@@ -158,7 +156,6 @@ function renderDailyTab(main) {
         </button>
       </div>
 
-      <!-- Tanggal, Bulan, Tahun Selector -->
       <div class="grid grid-cols-3 gap-1.5">
         <select onchange="setDailyDateParts('${yStr}', '${mStr}', this.value)" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
           ${Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
@@ -177,7 +174,6 @@ function renderDailyTab(main) {
         </select>
       </div>
 
-      <!-- PDF Export Buttons -->
       <div class="grid grid-cols-2 gap-2 pt-1">
         <button onclick="downloadDailyPdf()" class="py-2 px-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold active:scale-95">
           📄 PDF Harian (${dStr}/${mStr})
@@ -188,7 +184,6 @@ function renderDailyTab(main) {
       </div>
     </section>
 
-    <!-- Search & Sub-Category Filter -->
     <div class="space-y-2 mb-3">
       <div class="flex gap-2">
         <input type="text" value="${escHtml(STATE.dailySearch)}" oninput="STATE.dailySearch=this.value; renderCurrentTab();"
@@ -212,7 +207,6 @@ function renderDailyTab(main) {
       </div>
     </div>
 
-    <!-- Daily Input List (Selected Date Only) -->
     <section class="space-y-3 mb-4">
       ${groups.length === 0 ? `<div class="bg-white p-6 rounded-2xl text-center text-xs text-stone-400">Tidak ada bahan ditemukan.</div>` : ''}
       ${groups.map(grp => `
@@ -264,7 +258,6 @@ function renderDailyTab(main) {
       </button>
     </section>
 
-    <!-- Monthly Accumulation + SO, Selisih, Data Pemakaian Bar, Value SO -->
     <section class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
       <div class="p-3.5 bg-amber-950 text-white">
         <div class="flex items-center justify-between">
@@ -432,6 +425,18 @@ function moveIngredientOrder(ingId, dir) {
   renderCurrentTab();
 }
 
+function jumpIngredientOrder(ingId, newPosRaw) {
+  const list = getSortedIngredients();
+  const idx = list.findIndex(x => String(x.id) === String(ingId));
+  const target = Math.min(Math.max(1, Number(newPosRaw) || 1), list.length) - 1;
+  if (idx < 0 || idx === target) return;
+  const [moved] = list.splice(idx, 1);
+  list.splice(target, 0, moved);
+  list.forEach((item, i) => { item.sortOrder = i + 1; });
+  STATE.ingredients = list;
+  renderCurrentTab();
+}
+
 function changeIngredientSubCat(ingId, newCat) {
   const item = STATE.ingredients.find(x => String(x.id) === String(ingId));
   if (item) {
@@ -459,7 +464,8 @@ async function saveMasterOrderAction() {
   if (ok) STATE.masterEditMode = false;
 }
 
-function openAddRawMaterialModal(editIng = null) {
+function openAddRawMaterialModal(editIngId = null) {
+  const editIng = editIngId ? STATE.ingredients.find(x => String(x.id) === String(editIngId)) : null;
   const isEdit = !!editIng;
   openModal(isEdit ? 'Edit Raw Material' : '+ Tambah Raw Material Baru', `
     <div class="space-y-3">
@@ -547,7 +553,8 @@ async function submitRawMaterialForm(editId) {
 
 function renderMasterTab(main) {
   const isIngSub = STATE.masterSubTab === 'ingredients';
-  const sortedList = getSortedIngredients().filter(ing => {
+  const allSorted = getSortedIngredients();
+  const sortedList = allSorted.filter(ing => {
     const q = STATE.masterSearch.toLowerCase();
     return !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q);
   });
@@ -584,6 +591,9 @@ function renderMasterTab(main) {
           </button>
         </div>
         ${STATE.masterEditMode ? `
+          <p class="text-[10px] text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200">
+            Ketik nomor urut di kotak angka untuk lompat posisi langsung, atau gunakan ▲ / ▼.
+          </p>
           <button onclick="saveMasterOrderAction()" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs shadow active:scale-95">
             💾 Simpan Perubahan Susunan &amp; Kategori
           </button>
@@ -591,69 +601,326 @@ function renderMasterTab(main) {
       </section>
 
       <section class="bg-white rounded-2xl shadow-sm border border-stone-200 divide-y divide-stone-100">
-        ${sortedList.map((ing, idx) => `
-          <div class="p-3 flex items-center justify-between gap-2">
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-1.5">
-                <span class="text-[10px] font-bold text-stone-400">#${idx + 1}</span>
-                <p class="text-xs font-bold text-stone-900 truncate">${escHtml(ing.name)}</p>
+        ${sortedList.map((ing) => {
+          const realPos = allSorted.findIndex(x => String(x.id) === String(ing.id)) + 1;
+          return `
+            <div class="p-3 flex items-center justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  ${STATE.masterEditMode ? `
+                    <input type="number" min="1" max="${allSorted.length}" value="${realPos}"
+                      onchange="jumpIngredientOrder('${ing.id}', this.value)"
+                      class="w-11 px-1 py-0.5 rounded border border-amber-400 bg-amber-50 text-[11px] font-bold text-center text-amber-950" />
+                  ` : `
+                    <span class="text-[10px] font-bold text-stone-400">#${realPos}</span>
+                  `}
+                  <p class="text-xs font-bold text-stone-900 truncate">${escHtml(ing.name)}</p>
+                </div>
+                ${STATE.masterEditMode ? `
+                  <select onchange="changeIngredientSubCat('${ing.id}', this.value)" class="mt-1 px-2 py-1 rounded-lg border border-stone-300 bg-stone-50 text-[11px] font-bold text-stone-800">
+                    ${SUB_CATEGORIES.map(c => `<option value="${c}" ${ing.subCategory === c ? 'selected' : ''}>${c}</option>`).join('')}
+                  </select>
+                ` : `
+                  <p class="text-[10px] text-stone-500 mt-0.5">
+                    <span class="px-1.5 py-0.5 rounded bg-stone-100 font-semibold text-stone-700">${escHtml(ing.subCategory)}</span>
+                    • ${formatRp(ing.unitCost)} / ${escHtml(ing.unit)}
+                  </p>
+                `}
               </div>
               ${STATE.masterEditMode ? `
-                <select onchange="changeIngredientSubCat('${ing.id}', this.value)" class="mt-1 px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-900">
-                  ${SUB_CATEGORIES.map(c => `<option value="${c}" ${ing.subCategory === c ? 'selected' : ''}>${c}</option>`).join('')}
-                </select>
+                <div class="flex items-center gap-1 shrink-0">
+                  <button onclick="moveIngredientOrder('${ing.id}', -1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▲</button>
+                  <button onclick="moveIngredientOrder('${ing.id}', 1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▼</button>
+                  <button onclick="openAddRawMaterialModal('${escHtml(ing.id)}')" class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
+                  <button onclick="deleteIngredientItem('${ing.id}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+                </div>
               ` : `
-                <p class="text-[10px] text-stone-500 mt-0.5">
-                  <span class="px-1.5 py-0.5 rounded bg-stone-100 font-semibold text-stone-700">${escHtml(ing.subCategory)}</span>
-                  • ${formatRp(ing.unitCost)} / ${escHtml(ing.unit)}
-                </p>
+                <div class="text-right shrink-0">
+                  <p class="text-xs font-bold text-stone-800">${formatRp(ing.price)}</p>
+                  <p class="text-[10px] text-stone-400">/${formatNum(ing.packSize)} ${escHtml(ing.unit)}</p>
+                </div>
               `}
             </div>
-            ${STATE.masterEditMode ? `
-              <div class="flex items-center gap-1 shrink-0">
-                <button onclick="moveIngredientOrder('${ing.id}', -1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▲</button>
-                <button onclick="moveIngredientOrder('${ing.id}', 1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▼</button>
-                <button onclick='openAddRawMaterialModal(${JSON.stringify(ing).replace(/'/g, "&#39;")})' class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
-                <button onclick="deleteIngredientItem('${ing.id}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
-              </div>
-            ` : `
-              <div class="text-right shrink-0">
-                <p class="text-xs font-bold text-stone-800">${formatRp(ing.price)}</p>
-                <p class="text-[10px] text-stone-400">/${formatNum(ing.packSize)} ${escHtml(ing.unit)}</p>
-              </div>
-            `}
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </section>
     ` : renderRecipesSubView()}
   `;
 }
 
-function renderRecipesSubView() {
-  if (!STATE.recipes.length) {
-    return `<div class="bg-white p-6 rounded-2xl text-center text-xs text-stone-500 border border-stone-200">
-      Belum ada data resep tersimpan di tab Recipes Google Sheets.
-    </div>`;
+// ==================== RECIPE HPP CALCULATOR & BUILDER ====================
+window._recipeDraftItems = [];
+
+function normalizeRecipe(raw, idx) {
+  const id = String(raw.id || raw.ID || ('rcp_' + idx));
+  const name = String(raw.name || raw['Nama Menu'] || 'Menu').trim();
+  const category = String(raw.category || raw['Kategori'] || 'Signature').trim();
+  const sellingPrice = Number(raw.sellingPrice !== '' && raw.sellingPrice !== undefined ? raw.sellingPrice : (raw['Harga Jual'] || 0)) || 0;
+  const notes = String(raw.notes || raw['Catatan'] || '').trim();
+  let parsedItems = [];
+  const rawIngs = raw.ingredients !== undefined ? raw.ingredients : raw['Bahan'];
+  if (Array.isArray(rawIngs)) {
+    parsedItems = rawIngs;
+  } else if (typeof rawIngs === 'string' && rawIngs.trim().startsWith('[')) {
+    try { parsedItems = JSON.parse(rawIngs); } catch (e) {}
   }
+
+  const items = parsedItems.map(it => {
+    const liveIng = STATE.ingredients.find(x => String(x.id) === String(it.ingId));
+    const unitCost = liveIng ? Number(liveIng.unitCost) : (Number(it.unitCost) || 0);
+    const qty = Number(it.qty) || 0;
+    return {
+      ingId: String(it.ingId || ''),
+      name: liveIng ? liveIng.name : (it.name || 'Bahan'),
+      unit: liveIng ? liveIng.unit : (it.unit || 'gram'),
+      unitCost,
+      qty
+    };
+  });
+
+  const computedHpp = items.length > 0
+    ? items.reduce((s, it) => s + (it.qty * it.unitCost), 0)
+    : (Number(raw.hpp || raw['HPP'] || 0) || 0);
+  const margin = sellingPrice > 0 ? (((sellingPrice - computedHpp) / sellingPrice) * 100) : 0;
+
+  return { id, name, category, sellingPrice, notes, items, hpp: computedHpp, margin };
+}
+
+function renderRecipesSubView() {
+  const recipes = STATE.recipes.map(normalizeRecipe);
   return `
-    <section class="space-y-2.5">
-      ${STATE.recipes.map(r => {
-        const name = r.name || r['Nama Menu'] || 'Menu';
-        const sell = Number(r.sellingPrice || r['Harga Jual'] || 0);
-        const hpp = Number(r.hpp || r['HPP'] || 0);
-        const margin = sell > 0 ? (((sell - hpp) / sell) * 100).toFixed(1) : 0;
-        return `
-          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 flex items-center justify-between">
-            <div>
-              <p class="text-xs font-bold text-stone-900">${escHtml(name)}</p>
-              <p class="text-[10px] text-stone-500">Harga Jual: <b>${formatRp(sell)}</b> • HPP: <b>${formatRp(hpp)}</b></p>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold">
-              Margin ${margin}%
-            </span>
-          </div>
-        `;
-      }).join('')}
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 flex items-center justify-between gap-2">
+      <div>
+        <h2 class="text-sm font-bold text-stone-900">☕ Kalkulator &amp; Daftar Resep HPP</h2>
+        <p class="text-[11px] text-stone-500">Hitung otomatis HPP per cup dari 108+ harga bahan</p>
+      </div>
+      <button onclick="openRecipeModal()" class="px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0 active:scale-95">
+        + Resep HPP
+      </button>
     </section>
+
+    ${recipes.length === 0 ? `
+      <div class="bg-white p-8 rounded-2xl text-center border border-stone-200">
+        <p class="text-xs text-stone-500 mb-2.5">Belum ada resep minuman tercatat.</p>
+        <button onclick="openRecipeModal()" class="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold">
+          + Racik Resep Pertama
+        </button>
+      </div>
+    ` : `
+      <section class="space-y-2.5">
+        ${recipes.map(r => {
+          const profit = r.sellingPrice - r.hpp;
+          const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
+          return `
+            <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-bold">${escHtml(r.category)}</span>
+                  <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(r.name)}</h3>
+                </div>
+                <div class="flex items-center gap-1">
+                  <button onclick="openRecipeModal('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
+                  <button onclick="deleteRecipeAction('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-stone-100 text-[11px]">
+                <div>
+                  <span class="text-stone-400 block text-[10px]">Harga Jual</span>
+                  <b>${formatRp(r.sellingPrice)}</b>
+                </div>
+                <div>
+                  <span class="text-stone-400 block text-[10px]">HPP (${cogsPct}%)</span>
+                  <b class="text-amber-800">${formatRp(r.hpp)}</b>
+                </div>
+                <div>
+                  <span class="text-stone-400 block text-[10px]">Margin (${r.margin.toFixed(1)}%)</span>
+                  <b class="${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${formatRp(profit)}</b>
+                </div>
+              </div>
+
+              ${r.items.length > 0 ? `
+                <div class="mt-2.5 pt-2 border-t border-dashed border-stone-200 space-y-1">
+                  ${r.items.map(it => `
+                    <div class="flex justify-between text-[10px] text-stone-600">
+                      <span>• ${escHtml(it.name)} (${formatNum(it.qty)} ${escHtml(it.unit)})</span>
+                      <span class="font-semibold">${formatRp(it.qty * it.unitCost)}</span>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+              ${r.notes ? `<p class="mt-2 text-[10px] text-stone-500 bg-stone-50 px-2.5 py-1.5 rounded-lg">Catatan: ${escHtml(r.notes)}</p>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </section>
+    `}
   `;
+}
+
+function openRecipeModal(editRecipeId = null) {
+  const existing = editRecipeId ? STATE.recipes.map(normalizeRecipe).find(x => String(x.id) === String(editRecipeId)) : null;
+  window._recipeDraftItems = existing ? existing.items.map(i => ({ ...i })) : [];
+  const sortedIngs = getSortedIngredients();
+
+  openModal(existing ? 'Edit Resep & HPP' : '+ Tambah Resep & Hitung HPP', `
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Menu Minuman</label>
+        <input id="rcpName" type="text" value="${escHtml(existing ? existing.name : '')}" placeholder="Contoh: Ube Matcha Latte"
+          class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-semibold" />
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Kategori Menu</label>
+          <select id="rcpCategory" class="w-full px-2.5 py-2 rounded-xl border border-stone-300 text-xs bg-white">
+            ${['Signature', 'Coffee', 'Non-Coffee', 'Matcha & Tea', 'Mocktail', 'Seasonal'].map(c =>
+              `<option value="${c}" ${(existing && existing.category === c) ? 'selected' : ''}>${c}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Harga Jual (Rp)</label>
+          <input id="rcpSellPrice" type="number" value="${existing ? (existing.sellingPrice || '') : ''}" placeholder="28000"
+            oninput="recalcRecipeModalSummary()"
+            class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-bold" />
+        </div>
+      </div>
+
+      <div class="p-2.5 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
+        <p class="text-[11px] font-bold text-stone-800">Tambah Komposisi Bahan Baku</p>
+        <select id="rcpIngPicker" class="w-full px-2.5 py-2 rounded-lg border border-stone-300 text-xs bg-white">
+          ${sortedIngs.map(ing => `<option value="${escHtml(ing.id)}">${escHtml(ing.name)} (${formatRp(ing.unitCost)}/${escHtml(ing.unit)})</option>`).join('')}
+        </select>
+        <div class="flex gap-2">
+          <input id="rcpIngQty" type="number" step="any" placeholder="Takaran (gram / ml / pcs)"
+            class="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 text-xs bg-white" />
+          <button type="button" onclick="addIngredientToRecipeDraft()" class="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs font-bold shrink-0">
+            + Tambah
+          </button>
+        </div>
+      </div>
+
+      <div id="rcpItemsContainer" class="space-y-1.5 max-h-44 overflow-y-auto"></div>
+
+      <div id="rcpSummaryBox" class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs space-y-1"></div>
+
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Catatan / SOP Penyajian (Opsional)</label>
+        <input id="rcpNotes" type="text" value="${escHtml(existing ? existing.notes : '')}" placeholder="Contoh: Es batu 150gr, garnish marshmallow"
+          class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+      </div>
+
+      <button onclick="submitRecipeForm('${existing ? escHtml(existing.id) : ''}')"
+        class="w-full py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs active:scale-95">
+        💾 Simpan Resep &amp; HPP
+      </button>
+    </div>
+  `);
+
+  renderRecipeDraftList();
+}
+
+function addIngredientToRecipeDraft() {
+  const ingId = document.getElementById('rcpIngPicker')?.value;
+  const qty = Number(document.getElementById('rcpIngQty')?.value) || 0;
+  const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
+  if (!ing || qty <= 0) {
+    showToast('Pilih bahan dan isi takaran > 0');
+    return;
+  }
+  const existingIdx = window._recipeDraftItems.findIndex(x => String(x.ingId) === String(ing.id));
+  if (existingIdx >= 0) {
+    window._recipeDraftItems[existingIdx].qty += qty;
+  } else {
+    window._recipeDraftItems.push({
+      ingId: ing.id,
+      name: ing.name,
+      unit: ing.unit,
+      unitCost: Number(ing.unitCost) || 0,
+      qty
+    });
+  }
+  const qtyInput = document.getElementById('rcpIngQty');
+  if (qtyInput) qtyInput.value = '';
+  renderRecipeDraftList();
+}
+
+function removeIngredientFromRecipeDraft(idx) {
+  window._recipeDraftItems.splice(idx, 1);
+  renderRecipeDraftList();
+}
+
+function renderRecipeDraftList() {
+  const box = document.getElementById('rcpItemsContainer');
+  if (!box) return;
+  if (window._recipeDraftItems.length === 0) {
+    box.innerHTML = `<p class="text-[11px] text-stone-400 text-center py-2">Belum ada bahan ditambahkan ke resep ini.</p>`;
+  } else {
+    box.innerHTML = window._recipeDraftItems.map((it, idx) => `
+      <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white border border-stone-200 text-[11px]">
+        <div class="min-w-0 flex-1">
+          <p class="font-bold text-stone-800 truncate">${escHtml(it.name)}</p>
+          <p class="text-[10px] text-stone-500">${formatNum(it.qty)} ${escHtml(it.unit)} × ${formatRp(it.unitCost)}</p>
+        </div>
+        <span class="font-bold text-stone-900 shrink-0">${formatRp(it.qty * it.unitCost)}</span>
+        <button type="button" onclick="removeIngredientFromRecipeDraft(${idx})" class="w-6 h-6 rounded bg-rose-100 text-rose-700 font-bold text-[10px]">✕</button>
+      </div>
+    `).join('');
+  }
+  recalcRecipeModalSummary();
+}
+
+function recalcRecipeModalSummary() {
+  const sumBox = document.getElementById('rcpSummaryBox');
+  if (!sumBox) return;
+  const sellPrice = Number(document.getElementById('rcpSellPrice')?.value) || 0;
+  const totalHpp = window._recipeDraftItems.reduce((s, it) => s + (it.qty * it.unitCost), 0);
+  const profit = sellPrice - totalHpp;
+  const marginPct = sellPrice > 0 ? ((profit / sellPrice) * 100) : 0;
+  const cogsPct = sellPrice > 0 ? ((totalHpp / sellPrice) * 100) : 0;
+
+  sumBox.innerHTML = `
+    <div class="flex justify-between">
+      <span class="text-stone-600">Total HPP (COGS):</span>
+      <b class="text-stone-900">${formatRp(totalHpp)} (${cogsPct.toFixed(1)}%)</b>
+    </div>
+    <div class="flex justify-between">
+      <span class="text-stone-600">Gross Profit / Cup:</span>
+      <b class="${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${formatRp(profit)} (Margin ${marginPct.toFixed(1)}%)</b>
+    </div>
+  `;
+}
+
+async function submitRecipeForm(editRecipeId) {
+  const name = (document.getElementById('rcpName')?.value || '').trim();
+  const category = document.getElementById('rcpCategory')?.value || 'Signature';
+  const sellingPrice = Number(document.getElementById('rcpSellPrice')?.value) || 0;
+  const notes = (document.getElementById('rcpNotes')?.value || '').trim();
+  const hpp = window._recipeDraftItems.reduce((s, it) => s + (it.qty * it.unitCost), 0);
+  const margin = sellingPrice > 0 ? Number((((sellingPrice - hpp) / sellingPrice) * 100).toFixed(2)) : 0;
+
+  if (!name || window._recipeDraftItems.length === 0) {
+    showToast('Nama menu & minimal 1 bahan wajib diisi');
+    return;
+  }
+  closeModal();
+
+  await postToBackend({
+    action: 'saveRecipe',
+    recipe: {
+      id: editRecipeId || ('rcp_' + Date.now()),
+      name,
+      category,
+      sellingPrice,
+      ingredients: window._recipeDraftItems,
+      hpp,
+      margin,
+      notes
+    }
+  }, `Resep ${name} (HPP ${formatRp(hpp)}) tersimpan!`);
+}
+
+async function deleteRecipeAction(recipeId) {
+  await postToBackend({ action: 'deleteRecipe', recipeId }, 'Resep dihapus');
 }
