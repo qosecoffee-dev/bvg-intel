@@ -5,19 +5,24 @@ const SUB_CATEGORIES = [
   'Tier 1', 'Tier 2', 'Preparation'
 ];
 
+const _nowInit = new Date();
 const STATE = {
   apiUrl: '',
   activeTab: 'home',
   poSubTab: 'po',
   masterSubTab: 'ingredients',
-  selectedDate: new Date().toISOString().slice(0, 10),
+  selectedDate: _nowInit.toISOString().slice(0, 10),
   parSearch: '',
   dailySearch: '',
   dailyCatFilter: 'ALL',
   masterSearch: '',
   masterEditMode: false,
-  poDate: new Date().toISOString().slice(0, 10),
+  recipeSearch: '',
+  recipeCatFilter: 'ALL',
+  poDate: _nowInit.toISOString().slice(0, 10),
   vendorSearch: '',
+  menuEngMonth: String(_nowInit.getMonth() + 1).padStart(2, '0'),
+  menuEngYear: String(_nowInit.getFullYear()),
   ingredients: [],
   recipes: [],
   invDaily: [],
@@ -27,7 +32,8 @@ const STATE = {
   draftDaily: {},
   draftMonthly: {},
   draftPar: {},
-  isSyncing: false
+  isSyncing: false,
+  lastSyncInfo: null
 };
 
 function detectSavedApiUrl() {
@@ -41,6 +47,37 @@ function detectSavedApiUrl() {
     }
   }
   return '';
+}
+
+function loadLastSyncInfo() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('bvg_intel_last_sync') || 'null');
+    if (raw && raw.timestamp) STATE.lastSyncInfo = raw;
+  } catch (e) {}
+}
+
+function recordSyncInfo(success) {
+  STATE.lastSyncInfo = {
+    success: !!success,
+    timestamp: new Date().toISOString()
+  };
+  try {
+    localStorage.setItem('bvg_intel_last_sync', JSON.stringify(STATE.lastSyncInfo));
+  } catch (e) {}
+}
+
+function formatSyncTimestamp(isoStr) {
+  if (!isoStr) return '-';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '-';
+  const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const tgl = String(d.getDate()).padStart(2, '0');
+  const bln = bulan[d.getMonth()];
+  const thn = d.getFullYear();
+  const jam = String(d.getHours()).padStart(2, '0');
+  const mnt = String(d.getMinutes()).padStart(2, '0');
+  const dtk = String(d.getSeconds()).padStart(2, '0');
+  return `${tgl} ${bln} ${thn} • Pukul ${jam}:${mnt}:${dtk}`;
 }
 
 function formatRp(num) {
@@ -121,6 +158,98 @@ function getSortedIngredients() {
   });
 }
 
+// ==================== REUSABLE FAST INGREDIENT AUTOCOMPLETE (iOS KEYBOARD SAFE) ====================
+window._acCallbacks = {};
+
+function renderIngAutocompleteHtml(prefix, selectedIngId = '', placeholder = 'Ketik nama bahan baku...') {
+  const sorted = getSortedIngredients();
+  const sel = selectedIngId ? sorted.find(x => String(x.id) === String(selectedIngId)) : null;
+  const displayVal = sel ? `${sel.name} (${formatRp(sel.unitCost)}/${sel.unit})` : '';
+
+  return `
+    <div class="relative" id="${prefix}_wrapper">
+      <input type="hidden" id="${prefix}_val" value="${escHtml(sel ? sel.id : '')}" />
+      <div class="relative flex items-center">
+        <input
+          type="text"
+          id="${prefix}_input"
+          value="${escHtml(displayVal)}"
+          placeholder="${escHtml(placeholder)}"
+          autocomplete="off"
+          autocorrect="off"
+          spellcheck="false"
+          onfocus="openIngAutocomplete('${prefix}')"
+          oninput="filterIngAutocomplete('${prefix}', this.value)"
+          class="w-full pl-3 pr-8 py-2 rounded-xl border border-stone-300 text-xs bg-white font-semibold focus:border-amber-600 focus:outline-none"
+        />
+        <button type="button" onclick="clearIngAutocomplete('${prefix}')"
+          class="absolute right-2 w-5 h-5 rounded-full bg-stone-200 text-stone-600 text-[10px] font-bold flex items-center justify-center">
+          ✕
+        </button>
+      </div>
+      <div id="${prefix}_list" class="hidden mt-1 max-h-48 overflow-y-auto rounded-xl border border-stone-300 bg-white shadow-lg divide-y divide-stone-100 z-30"></div>
+    </div>
+  `;
+}
+
+function openIngAutocomplete(prefix) {
+  const input = document.getElementById(prefix + '_input');
+  const hidden = document.getElementById(prefix + '_val');
+  const q = (hidden && hidden.value) ? '' : (input ? input.value : '');
+  filterIngAutocomplete(prefix, q);
+}
+
+function clearIngAutocomplete(prefix) {
+  const input = document.getElementById(prefix + '_input');
+  const hidden = document.getElementById(prefix + '_val');
+  if (hidden) hidden.value = '';
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  filterIngAutocomplete(prefix, '');
+}
+
+function filterIngAutocomplete(prefix, query) {
+  const listEl = document.getElementById(prefix + '_list');
+  if (!listEl) return;
+  const q = String(query || '').trim().toLowerCase();
+  const sorted = getSortedIngredients();
+  const matches = q
+    ? sorted.filter(ing => ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q))
+    : sorted;
+
+  if (matches.length === 0) {
+    listEl.innerHTML = `<div class="px-3 py-2.5 text-[11px] text-stone-400 text-center">Bahan tidak ditemukan</div>`;
+  } else {
+    listEl.innerHTML = matches.slice(0, 60).map(ing => `
+      <button type="button" onclick="selectIngAutocomplete('${prefix}', '${escHtml(ing.id)}')"
+        class="w-full text-left px-3 py-2 hover:bg-amber-50 active:bg-amber-100 flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-xs font-bold text-stone-800 truncate">${escHtml(ing.name)}</p>
+          <p class="text-[10px] text-stone-400">${escHtml(ing.subCategory)} • Satuan: ${escHtml(ing.unit)}</p>
+        </div>
+        <span class="text-[10px] font-bold text-amber-800 shrink-0">${formatRp(ing.unitCost)}/${escHtml(ing.unit)}</span>
+      </button>
+    `).join('');
+  }
+  listEl.classList.remove('hidden');
+}
+
+function selectIngAutocomplete(prefix, ingId) {
+  const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
+  const input = document.getElementById(prefix + '_input');
+  const hidden = document.getElementById(prefix + '_val');
+  const listEl = document.getElementById(prefix + '_list');
+  if (hidden) hidden.value = ing ? ing.id : '';
+  if (input && ing) input.value = `${ing.name} (${formatRp(ing.unitCost)}/${ing.unit})`;
+  if (listEl) listEl.classList.add('hidden');
+  if (typeof window._acCallbacks[prefix] === 'function' && ing) {
+    window._acCallbacks[prefix](ing);
+  }
+}
+
+// ==================== MONTHLY SUMMARY & CALCULATIONS ====================
 function getMonthKey(dateStr) {
   return (dateStr || STATE.selectedDate).slice(0, 7);
 }
@@ -151,7 +280,9 @@ function getMonthlySummaryMap(monthKey) {
     const hasSo = base.soQty !== '' && base.soQty !== null && base.soQty !== undefined;
     const soQty = hasSo ? Number(base.soQty) : '';
     const selisih = hasSo ? (soQty - totalCl) : 0;
-    const valueSo = hasSo ? (soQty * ing.unitCost) : 0;
+
+    const pemakaianBarRp = agg.totalOut * (Number(ing.unitCost) || 0);
+    const valueSo = hasSo ? (soQty * (Number(ing.unitCost) || 0)) : 0;
 
     map[id] = {
       ingId: id,
@@ -161,7 +292,7 @@ function getMonthlySummaryMap(monthKey) {
       totalCl,
       soQty,
       selisih,
-      pemakaianBar: base.pemakaianBar !== undefined ? base.pemakaianBar : '',
+      pemakaianBar: pemakaianBarRp,
       valueSo
     };
   });
@@ -247,9 +378,11 @@ async function syncAllData(manual = false) {
     const res = await fetch(STATE.apiUrl + '?t=' + Date.now());
     const data = await res.json();
     applyServerState(data);
+    recordSyncInfo(true);
     updateSyncBadge('● Synced', false);
     if (manual) showToast('Data tersinkron dengan Google Sheets');
   } catch (err) {
+    recordSyncInfo(false);
     updateSyncBadge('● Offline', true);
     if (manual) showToast('Gagal sinkronisasi, cek koneksi');
   } finally {
@@ -258,9 +391,9 @@ async function syncAllData(manual = false) {
   }
 }
 
-async function postToBackend(payload, successMsg) {
+async function postToBackend(payload, successMsg, silent = false) {
   if (!STATE.apiUrl) {
-    openSettingsModal();
+    if (!silent) openSettingsModal();
     return false;
   }
   updateSyncBadge('↻ Saving...', false);
@@ -272,16 +405,18 @@ async function postToBackend(payload, successMsg) {
     const data = await res.json();
     if (data.status === 'success') {
       applyServerState(data);
+      recordSyncInfo(true);
       updateSyncBadge('● Synced', false);
       if (successMsg) showToast(successMsg);
-      renderCurrentTab();
+      if (!silent) renderCurrentTab();
       return true;
     } else {
       throw new Error(data.message || 'Server error');
     }
   } catch (err) {
+    recordSyncInfo(false);
     updateSyncBadge('● Error', true);
-    showToast('Gagal menyimpan ke server');
+    if (!silent) showToast('Gagal menyimpan ke server');
     return false;
   }
 }
@@ -330,39 +465,11 @@ function renderCurrentTab() {
   const main = document.getElementById('mainContent');
   if (!main) return;
 
-  // Pertahankan elemen input pencarian & fokus kursor agar keyboard iPhone tidak tertutup saat mengetik
-  const active = document.activeElement;
-  let focusSelector = null;
-  let selStart = null;
-  let selEnd = null;
-  if (active && main.contains(active) && active.tagName === 'INPUT' && active.type === 'text') {
-    if (active.id) {
-      focusSelector = '#' + active.id;
-    } else if (active.placeholder) {
-      focusSelector = `input[type="text"][placeholder="${active.placeholder.replace(/"/g, '\\"')}"]`;
-    }
-    try {
-      selStart = active.selectionStart;
-      selEnd = active.selectionEnd;
-    } catch (e) {}
-  }
-
   if (STATE.activeTab === 'home') renderHomeTab(main);
   else if (STATE.activeTab === 'daily' && typeof renderDailyTab === 'function') renderDailyTab(main);
   else if (STATE.activeTab === 'parstock' && typeof renderParStockTab === 'function') renderParStockTab(main);
   else if (STATE.activeTab === 'po' && typeof renderPoVendorTab === 'function') renderPoVendorTab(main);
   else if (STATE.activeTab === 'master' && typeof renderMasterTab === 'function') renderMasterTab(main);
-
-  if (focusSelector && active) {
-    const nextEl = main.querySelector(focusSelector);
-    if (nextEl) {
-      nextEl.replaceWith(active);
-      active.focus({ preventScroll: true });
-      if (selStart !== null && typeof active.setSelectionRange === 'function') {
-        try { active.setSelectionRange(selStart, selEnd); } catch (e) {}
-      }
-    }
-  }
 }
 
 function renderHomeTab(main) {
@@ -370,6 +477,15 @@ function renderHomeTab(main) {
   const curMonth = new Date().toISOString().slice(0, 7);
   const mMap = getMonthlySummaryMap(curMonth);
   const totalSoValue = Object.values(mMap).reduce((sum, x) => sum + (Number(x.valueSo) || 0), 0);
+  const isOverLimit = totalSoValue > 20000000;
+
+  const syncInfo = STATE.lastSyncInfo;
+  const syncStatusHtml = syncInfo
+    ? (syncInfo.success
+        ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">● Success</span>`
+        : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px]">● Gagal / Offline</span>`)
+    : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-bold text-[10px]">● Belum Sync</span>`;
+  const syncTimeText = syncInfo ? formatSyncTimestamp(syncInfo.timestamp) : 'Belum ada riwayat sinkronisasi';
 
   const urlBanner = !STATE.apiUrl ? `
     <div class="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 mb-3 flex items-center justify-between gap-2">
@@ -406,6 +522,20 @@ function renderHomeTab(main) {
 
   main.innerHTML = `
     ${urlBanner}
+
+    <div class="bg-white px-3.5 py-2.5 rounded-2xl shadow-sm border border-stone-200 mb-3 flex items-center justify-between gap-2">
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Status Sinkronisasi:</span>
+          ${syncStatusHtml}
+        </div>
+        <p class="text-[11px] font-semibold text-stone-700 mt-0.5 truncate">${syncTimeText}</p>
+      </div>
+      <button onclick="syncAllData(true)" class="px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-bold shrink-0 active:scale-95">
+        ↻ Sync
+      </button>
+    </div>
+
     <div class="grid grid-cols-2 gap-2.5 mb-3">
       <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
         <p class="text-[11px] text-stone-500 font-medium">Total Raw Material</p>
@@ -417,7 +547,7 @@ function renderHomeTab(main) {
       </div>
       <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
         <p class="text-[11px] text-stone-500 font-medium">Total Value SO (${curMonth})</p>
-        <p class="text-sm font-extrabold text-stone-900 mt-1">${formatRp(totalSoValue)}</p>
+        <p class="text-sm font-extrabold ${isOverLimit ? 'text-rose-600' : 'text-emerald-700'} mt-1">${formatRp(totalSoValue)}</p>
       </div>
       <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
         <p class="text-[11px] text-stone-500 font-medium">Total PO Tercatat</p>
@@ -455,6 +585,7 @@ function renderHomeTab(main) {
 
 document.addEventListener('DOMContentLoaded', () => {
   STATE.apiUrl = detectSavedApiUrl();
+  loadLastSyncInfo();
   loadLocalCache();
   renderCurrentTab();
   if (STATE.apiUrl) syncAllData(false);
