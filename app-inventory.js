@@ -1,3 +1,5 @@
+const SO_LIMIT_THRESHOLD = 20000000;
+
 function getDailyRecord(dateStr, ingId) {
   const key = dateStr + '__' + ingId;
   if (STATE.draftDaily[key]) return STATE.draftDaily[key];
@@ -23,20 +25,50 @@ function onDailyInputChange(ingId, field, rawVal) {
   }
 }
 
+function computeTotalMonthlyValueSo(mKey) {
+  const summaryMap = getMonthlySummaryMap(mKey);
+  let total = 0;
+  STATE.ingredients.forEach(ing => {
+    const s = summaryMap[ing.id] || {};
+    const draft = STATE.draftMonthly[mKey + '__' + ing.id] || {};
+    const soVal = draft.soQty !== undefined ? draft.soQty : s.soQty;
+    const hasSo = soVal !== '' && soVal !== null && soVal !== undefined;
+    if (hasSo) {
+      total += Number(soVal) * (Number(ing.unitCost) || 0);
+    }
+  });
+  return total;
+}
+
+function updateLiveTotalValueSoDisplay(mKey) {
+  const totalVal = computeTotalMonthlyValueSo(mKey);
+  const isOver = totalVal > SO_LIMIT_THRESHOLD;
+  const colorClass = isOver ? 'text-rose-600' : 'text-emerald-600';
+
+  const topEl = document.getElementById('topTotalValueSoDisplay');
+  if (topEl) {
+    topEl.textContent = formatRp(totalVal);
+    topEl.className = 'text-xs font-extrabold ' + (isOver ? 'text-rose-400' : 'text-emerald-300');
+  }
+
+  const bottomEl = document.getElementById('bottomTotalValueSoDisplay');
+  if (bottomEl) {
+    bottomEl.textContent = formatRp(totalVal);
+    bottomEl.className = 'p-2.5 text-right font-extrabold text-xs ' + colorClass;
+  }
+}
+
 function onMonthlyAuditChange(ingId, field, rawVal) {
   const mKey = getMonthKey(STATE.selectedDate);
   const key = mKey + '__' + ingId;
   const summaryMap = getMonthlySummaryMap(mKey);
-  const base = summaryMap[String(ingId)] || { totalCl: 0, soQty: '', pemakaianBar: '' };
+  const base = summaryMap[String(ingId)] || { totalCl: 0, soQty: '', pemakaianBar: 0 };
   const draft = STATE.draftMonthly[key] || {
-    soQty: base.soQty,
-    pemakaianBar: base.pemakaianBar
+    soQty: base.soQty
   };
 
   if (field === 'soQty') {
     draft.soQty = rawVal === '' ? '' : (Number(rawVal) || 0);
-  } else {
-    draft.pemakaianBar = rawVal;
   }
   STATE.draftMonthly[key] = draft;
 
@@ -53,6 +85,8 @@ function onMonthlyAuditChange(ingId, field, rawVal) {
   }
   const valEl = document.getElementById('valso_cell_' + ingId);
   if (valEl) valEl.textContent = hasSo ? formatRp(valSo) : 'Rp 0';
+
+  updateLiveTotalValueSoDisplay(mKey);
 }
 
 function setDailyDateParts(year, month, day) {
@@ -96,20 +130,21 @@ async function saveMonthlyAuditAction() {
   const summaryMap = getMonthlySummaryMap(mKey);
   const entries = STATE.ingredients.map(ing => {
     const key = mKey + '__' + ing.id;
-    const base = summaryMap[String(ing.id)] || { soQty: '', pemakaianBar: '' };
+    const base = summaryMap[String(ing.id)] || { soQty: '', pemakaianBar: 0 };
     const draft = STATE.draftMonthly[key] || {};
+    const autoPemakaianRp = Math.round(Number(base.pemakaianBar) || 0);
     return {
       ingId: ing.id,
       soQty: draft.soQty !== undefined ? draft.soQty : base.soQty,
-      pemakaianBar: draft.pemakaianBar !== undefined ? draft.pemakaianBar : base.pemakaianBar
+      pemakaianBar: autoPemakaianRp
     };
-  }).filter(e => e.soQty !== '' || (e.pemakaianBar !== '' && e.pemakaianBar !== undefined));
+  }).filter(e => e.soQty !== '' || e.pemakaianBar > 0);
 
   const ok = await postToBackend({
     action: 'saveMonthlyAudit',
     monthKey: mKey,
     entries
-  }, `Audit SO & Pemakaian Bar (${mKey}) tersimpan!`);
+  }, `Audit SO (${mKey}) tersimpan!`);
 
   if (ok) {
     Object.keys(STATE.draftMonthly).forEach(k => {
@@ -118,19 +153,22 @@ async function saveMonthlyAuditAction() {
   }
 }
 
-function renderDailyTab(main) {
-  const [yStr, mStr, dStr] = STATE.selectedDate.split('-');
-  const mKey = `${yStr}-${mStr}`;
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  const summaryMap = getMonthlySummaryMap(mKey);
+function getFilteredDailyIngredients() {
   const sortedList = getSortedIngredients();
-
-  const filtered = sortedList.filter(ing => {
+  const q = STATE.dailySearch.trim().toLowerCase();
+  return sortedList.filter(ing => {
     const matchCat = STATE.dailyCatFilter === 'ALL' || ing.subCategory === STATE.dailyCatFilter;
-    const q = STATE.dailySearch.toLowerCase();
     const matchQ = !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q);
     return matchCat && matchQ;
   });
+}
+
+function buildDailyItemsAndAuditHtml() {
+  const [yStr, mStr] = STATE.selectedDate.split('-');
+  const mKey = `${yStr}-${mStr}`;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const summaryMap = getMonthlySummaryMap(mKey);
+  const filtered = getFilteredDailyIngredients();
 
   const groups = [];
   const groupMap = {};
@@ -142,71 +180,10 @@ function renderDailyTab(main) {
     groupMap[ing.subCategory].push(ing);
   });
 
-  const totalValueSoAll = Object.values(summaryMap).reduce((acc, r) => acc + (Number(r.valueSo) || 0), 0);
+  const totalValueSoAll = computeTotalMonthlyValueSo(mKey);
+  const isOverLimit = totalValueSoAll > SO_LIMIT_THRESHOLD;
 
-  main.innerHTML = `
-    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
-      <div class="flex items-center justify-between">
-        <div>
-          <h2 class="text-sm font-bold text-stone-900">📦 Daily Inventory Bar</h2>
-          <p class="text-[11px] text-stone-500">Rumus otomatis: <b>CL = IN - OUT</b></p>
-        </div>
-        <button onclick="openAddRawMaterialModal()" class="px-2.5 py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold active:scale-95">
-          + Raw Material
-        </button>
-      </div>
-
-      <div class="grid grid-cols-3 gap-1.5">
-        <select onchange="setDailyDateParts('${yStr}', '${mStr}', this.value)" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
-          ${Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
-            const val = String(d).padStart(2, '0');
-            return `<option value="${val}" ${val === dStr ? 'selected' : ''}>Tgl ${d}</option>`;
-          }).join('')}
-        </select>
-        <select onchange="setDailyDateParts('${yStr}', this.value, '${dStr}')" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
-          ${months.map((lbl, idx) => {
-            const val = String(idx + 1).padStart(2, '0');
-            return `<option value="${val}" ${val === mStr ? 'selected' : ''}>${lbl}</option>`;
-          }).join('')}
-        </select>
-        <select onchange="setDailyDateParts(this.value, '${mStr}', '${dStr}')" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
-          ${[2025, 2026, 2027, 2028].map(yr => `<option value="${yr}" ${String(yr) === yStr ? 'selected' : ''}>${yr}</option>`).join('')}
-        </select>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2 pt-1">
-        <button onclick="downloadDailyPdf()" class="py-2 px-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold active:scale-95">
-          📄 PDF Harian (${dStr}/${mStr})
-        </button>
-        <button onclick="downloadMonthlyPdf()" class="py-2 px-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] font-bold active:scale-95">
-          📊 PDF Bulanan (${months[Number(mStr) - 1]} ${yStr})
-        </button>
-      </div>
-    </section>
-
-    <div class="space-y-2 mb-3">
-      <div class="flex gap-2">
-        <input type="text" value="${escHtml(STATE.dailySearch)}" oninput="STATE.dailySearch=this.value; renderCurrentTab();"
-          placeholder="Cari 108+ bahan baku..." class="flex-1 px-3 py-2 rounded-xl bg-white border border-stone-300 text-xs" />
-        <button onclick="STATE.activeTab='master'; STATE.masterSubTab='ingredients'; renderCurrentTab();"
-          class="px-3 py-2 rounded-xl bg-white border border-stone-300 text-[11px] font-bold text-stone-700 shrink-0">
-          ⚙️ Susunan
-        </button>
-      </div>
-      <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        <button onclick="STATE.dailyCatFilter='ALL'; renderCurrentTab();"
-          class="px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${STATE.dailyCatFilter === 'ALL' ? 'bg-stone-900 text-white' : 'bg-white text-stone-600 border border-stone-200'}">
-          Semua (${sortedList.length})
-        </button>
-        ${SUB_CATEGORIES.map(cat => `
-          <button onclick="STATE.dailyCatFilter='${cat}'; renderCurrentTab();"
-            class="px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0 ${STATE.dailyCatFilter === cat ? 'bg-amber-600 text-white' : 'bg-white text-stone-600 border border-stone-200'}">
-            ${cat}
-          </button>
-        `).join('')}
-      </div>
-    </div>
-
+  const cardsHtml = `
     <section class="space-y-3 mb-4">
       ${groups.length === 0 ? `<div class="bg-white p-6 rounded-2xl text-center text-xs text-stone-400">Tidak ada bahan ditemukan.</div>` : ''}
       ${groups.map(grp => `
@@ -260,14 +237,14 @@ function renderDailyTab(main) {
 
     <section class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden">
       <div class="p-3.5 bg-amber-950 text-white">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-2">
           <div>
             <h3 class="text-xs font-bold">📊 Rekap Bulanan &amp; Audit SO (${months[Number(mStr) - 1]} ${yStr})</h3>
-            <p class="text-[10px] text-amber-200">Akumulasi Total IN/OUT/CL otomatis + Input SO &amp; Pemakaian Bar</p>
+            <p class="text-[10px] text-amber-200">Pemakaian Bar (Rp) &amp; Value SO (Stok Fisik) otomatis</p>
           </div>
-          <div class="text-right">
+          <div class="text-right shrink-0">
             <span class="text-[10px] text-amber-300 block">Total Value SO</span>
-            <span class="text-xs font-extrabold">${formatRp(totalValueSoAll)}</span>
+            <span id="topTotalValueSoDisplay" class="text-xs font-extrabold ${isOverLimit ? 'text-rose-400' : 'text-emerald-300'}">${formatRp(totalValueSoAll)}</span>
           </div>
         </div>
       </div>
@@ -282,19 +259,19 @@ function renderDailyTab(main) {
               <th class="p-2 font-bold text-right">Tot CL</th>
               <th class="p-2 font-bold text-center min-w-[72px]">SO</th>
               <th class="p-2 font-bold text-right">Selisih</th>
-              <th class="p-2 font-bold text-center min-w-[85px]">Pemakaian Bar</th>
+              <th class="p-2 font-bold text-right min-w-[95px]">Pemakaian Bar</th>
               <th class="p-2 font-bold text-right min-w-[95px]">Value SO</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-stone-100">
             ${filtered.map(ing => {
-              const mSum = summaryMap[ing.id] || { totalIn: 0, totalOut: 0, totalCl: 0, soQty: '', selisih: 0, pemakaianBar: '', valueSo: 0 };
+              const mSum = summaryMap[ing.id] || { totalIn: 0, totalOut: 0, totalCl: 0, soQty: '', selisih: 0, pemakaianBar: 0, valueSo: 0 };
               const draft = STATE.draftMonthly[mKey + '__' + ing.id] || {};
               const soVal = draft.soQty !== undefined ? draft.soQty : mSum.soQty;
-              const barVal = draft.pemakaianBar !== undefined ? draft.pemakaianBar : mSum.pemakaianBar;
               const hasSo = soVal !== '' && soVal !== null && soVal !== undefined;
               const selisih = hasSo ? (Number(soVal) - Number(mSum.totalCl || 0)) : 0;
-              const valSo = hasSo ? (Number(soVal) * ing.unitCost) : 0;
+              const valSo = hasSo ? (Number(soVal) * (Number(ing.unitCost) || 0)) : 0;
+              const pemakaianBarRp = Number(mSum.pemakaianBar) || 0;
 
               return `
                 <tr>
@@ -313,10 +290,8 @@ function renderDailyTab(main) {
                   <td id="selisih_cell_${ing.id}" class="p-2 text-right font-bold ${selisih < 0 ? 'text-rose-600' : 'text-stone-800'}">
                     ${hasSo ? formatNum(selisih) : '-'}
                   </td>
-                  <td class="p-1.5">
-                    <input type="text" value="${escHtml(barVal)}" placeholder="0"
-                      oninput="onMonthlyAuditChange('${ing.id}', 'pemakaianBar', this.value)"
-                      class="w-20 px-1.5 py-1 rounded border border-stone-300 text-center bg-stone-50" />
+                  <td class="p-2 text-right font-semibold text-stone-700">
+                    ${formatRp(pemakaianBarRp)}
                   </td>
                   <td id="valso_cell_${ing.id}" class="p-2 text-right font-bold text-stone-900">
                     ${hasSo ? formatRp(valSo) : 'Rp 0'}
@@ -324,16 +299,115 @@ function renderDailyTab(main) {
                 </tr>
               `;
             }).join('')}
+
+            <tr class="bg-stone-100 border-t-2 border-stone-300">
+              <td colspan="7" class="p-2.5 text-right font-extrabold text-stone-800 uppercase text-[10px] tracking-wide">
+                Total Value SO (Stok Fisik)
+              </td>
+              <td id="bottomTotalValueSoDisplay" class="p-2.5 text-right font-extrabold text-xs ${isOverLimit ? 'text-rose-600' : 'text-emerald-600'}">
+                ${formatRp(totalValueSoAll)}
+              </td>
+            </tr>
+            <tr class="bg-stone-50 border-t border-stone-200">
+              <td colspan="7" class="p-2 text-right font-bold text-stone-500 uppercase text-[10px] tracking-wide">
+                Acuan / Batas Maksimal Stok Fisik
+              </td>
+              <td class="p-2 text-right font-extrabold text-stone-700 text-[11px]">
+                Rp 20.000.000
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
 
       <div class="p-3 bg-stone-50 border-t border-stone-200">
         <button onclick="saveMonthlyAuditAction()" class="w-full py-2.5 rounded-xl bg-amber-700 text-white font-bold text-xs active:scale-95">
-          💾 Simpan SO &amp; Data Pemakaian Bar (${months[Number(mStr) - 1]} ${yStr})
+          💾 Simpan Stock Opname (${months[Number(mStr) - 1]} ${yStr})
         </button>
       </div>
     </section>
+  `;
+
+  return cardsHtml;
+}
+
+function updateDailyFilteredViewOnly() {
+  const wrap = document.getElementById('dailyContentWrapper');
+  if (wrap) wrap.innerHTML = buildDailyItemsAndAuditHtml();
+}
+
+function renderDailyTab(main) {
+  const [yStr, mStr, dStr] = STATE.selectedDate.split('-');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const sortedList = getSortedIngredients();
+
+  main.innerHTML = `
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-bold text-stone-900">📦 Daily Inventory Bar</h2>
+          <p class="text-[11px] text-stone-500">Rumus otomatis: <b>CL = IN - OUT</b></p>
+        </div>
+        <button onclick="openAddRawMaterialModal()" class="px-2.5 py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold active:scale-95">
+          + Raw Material
+        </button>
+      </div>
+
+      <div class="grid grid-cols-3 gap-1.5">
+        <select onchange="setDailyDateParts('${yStr}', '${mStr}', this.value)" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
+          ${Array.from({ length: 31 }, (_, i) => i + 1).map(d => {
+            const val = String(d).padStart(2, '0');
+            return `<option value="${val}" ${val === dStr ? 'selected' : ''}>Tgl ${d}</option>`;
+          }).join('')}
+        </select>
+        <select onchange="setDailyDateParts('${yStr}', this.value, '${dStr}')" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
+          ${months.map((lbl, idx) => {
+            const val = String(idx + 1).padStart(2, '0');
+            return `<option value="${val}" ${val === mStr ? 'selected' : ''}>${lbl}</option>`;
+          }).join('')}
+        </select>
+        <select onchange="setDailyDateParts(this.value, '${mStr}', '${dStr}')" class="px-2 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
+          ${[2025, 2026, 2027, 2028].map(yr => `<option value="${yr}" ${String(yr) === yStr ? 'selected' : ''}>${yr}</option>`).join('')}
+        </select>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 pt-1">
+        <button onclick="downloadDailyPdf()" class="py-2 px-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-[11px] font-bold active:scale-95">
+          📄 PDF Harian (${dStr}/${mStr})
+        </button>
+        <button onclick="downloadMonthlyPdf()" class="py-2 px-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-[11px] font-bold active:scale-95">
+          📊 PDF Bulanan (${months[Number(mStr) - 1]} ${yStr})
+        </button>
+      </div>
+    </section>
+
+    <div class="space-y-2 mb-3">
+      <div class="flex gap-2">
+        <input id="dailySearchInput" type="text" value="${escHtml(STATE.dailySearch)}"
+          oninput="STATE.dailySearch=this.value; updateDailyFilteredViewOnly();"
+          placeholder="Cari bahan baku..." class="flex-1 px-3 py-2 rounded-xl bg-white border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
+        <button onclick="STATE.activeTab='master'; STATE.masterSubTab='ingredients'; renderCurrentTab();"
+          class="px-3 py-2 rounded-xl bg-white border border-stone-300 text-[11px] font-bold text-stone-700 shrink-0">
+          ⚙️ Susunan
+        </button>
+      </div>
+      <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
+        <button onclick="STATE.dailyCatFilter='ALL'; renderCurrentTab();"
+          class="px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0 ${STATE.dailyCatFilter === 'ALL' ? 'bg-stone-900 text-white' : 'bg-white text-stone-600 border border-stone-200'}">
+          Semua (${sortedList.length})
+        </button>
+        ${SUB_CATEGORIES.map(cat => `
+          <button onclick="STATE.dailyCatFilter='${cat}'; renderCurrentTab();"
+            class="px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0 ${STATE.dailyCatFilter === cat ? 'bg-amber-600 text-white' : 'bg-white text-stone-600 border border-stone-200'}">
+            ${cat}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+
+    <div id="dailyContentWrapper">
+      ${buildDailyItemsAndAuditHtml()}
+    </div>
   `;
 }
 
@@ -351,14 +425,47 @@ async function saveParStockAction() {
   if (ok) STATE.draftPar = {};
 }
 
-function renderParStockTab(main) {
+function buildParStockListHtml() {
   const curMonth = new Date().toISOString().slice(0, 7);
   const mMap = getMonthlySummaryMap(curMonth);
+  const q = STATE.parSearch.trim().toLowerCase();
   const sortedList = getSortedIngredients().filter(ing => {
-    const q = STATE.parSearch.toLowerCase();
     return !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q);
   });
 
+  if (sortedList.length === 0) {
+    return `<div class="p-6 text-center text-xs text-stone-400">Bahan tidak ditemukan.</div>`;
+  }
+
+  return sortedList.map(ing => {
+    const curStock = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
+    const minVal = STATE.draftPar[ing.id] !== undefined ? STATE.draftPar[ing.id] : (ing.minStock || 0);
+    const isLow = minVal > 0 && curStock <= minVal;
+    return `
+      <div class="p-3 flex items-center justify-between gap-2 ${isLow ? 'bg-rose-50/60' : ''}">
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-bold text-stone-900 truncate">${escHtml(ing.name)}</p>
+          <p class="text-[10px] text-stone-500">
+            ${escHtml(ing.subCategory)} • Sisa Daily: <b class="${isLow ? 'text-rose-600' : 'text-emerald-700'}">${formatNum(curStock)} ${escHtml(ing.unit)}</b>
+          </p>
+        </div>
+        <div class="w-28 shrink-0">
+          <label class="block text-[9px] font-bold text-stone-400 uppercase">Min Stock (${escHtml(ing.unit)})</label>
+          <input type="number" step="any" value="${minVal || ''}" placeholder="0"
+            oninput="onParInputChange('${ing.id}', this.value)"
+            class="w-full px-2.5 py-1.5 rounded-lg border ${isLow ? 'border-rose-400 bg-white' : 'border-stone-300 bg-stone-50'} text-xs font-bold text-right" />
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateParStockListOnly() {
+  const el = document.getElementById('parStockListContainer');
+  if (el) el.innerHTML = buildParStockListHtml();
+}
+
+function renderParStockTab(main) {
   main.innerHTML = `
     <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
       <div class="flex items-center justify-between">
@@ -371,38 +478,17 @@ function renderParStockTab(main) {
         </button>
       </div>
       <div class="flex gap-2">
-        <input type="text" value="${escHtml(STATE.parSearch)}" oninput="STATE.parSearch=this.value; renderCurrentTab();"
-          placeholder="Cari nama bahan atau kategori..." class="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+        <input id="parSearchInput" type="text" value="${escHtml(STATE.parSearch)}"
+          oninput="STATE.parSearch=this.value; updateParStockListOnly();"
+          placeholder="Cari nama bahan atau kategori..." class="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
         <button onclick="downloadParStockPdf()" class="px-3 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold shrink-0">
           📄 PDF
         </button>
       </div>
     </section>
 
-    <section class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden mb-3">
-      <div class="divide-y divide-stone-100">
-        ${sortedList.map(ing => {
-          const curStock = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
-          const minVal = STATE.draftPar[ing.id] !== undefined ? STATE.draftPar[ing.id] : (ing.minStock || 0);
-          const isLow = minVal > 0 && curStock <= minVal;
-          return `
-            <div class="p-3 flex items-center justify-between gap-2 ${isLow ? 'bg-rose-50/60' : ''}">
-              <div class="min-w-0 flex-1">
-                <p class="text-xs font-bold text-stone-900 truncate">${escHtml(ing.name)}</p>
-                <p class="text-[10px] text-stone-500">
-                  ${escHtml(ing.subCategory)} • Sisa Daily: <b class="${isLow ? 'text-rose-600' : 'text-emerald-700'}">${formatNum(curStock)} ${escHtml(ing.unit)}</b>
-                </p>
-              </div>
-              <div class="w-28 shrink-0">
-                <label class="block text-[9px] font-bold text-stone-400 uppercase">Min Stock (${escHtml(ing.unit)})</label>
-                <input type="number" step="any" value="${minVal || ''}" placeholder="0"
-                  oninput="onParInputChange('${ing.id}', this.value)"
-                  class="w-full px-2.5 py-1.5 rounded-lg border ${isLow ? 'border-rose-400 bg-white' : 'border-stone-300 bg-stone-50'} text-xs font-bold text-right" />
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
+    <section id="parStockListContainer" class="bg-white rounded-2xl shadow-sm border border-stone-200 overflow-hidden mb-3 divide-y divide-stone-100">
+      ${buildParStockListHtml()}
     </section>
 
     <button onclick="saveParStockAction()" class="w-full py-3 rounded-2xl bg-stone-900 text-white font-bold text-xs shadow-md active:scale-95">
@@ -422,7 +508,7 @@ function moveIngredientOrder(ingId, dir) {
   list[target] = temp;
   list.forEach((item, i) => { item.sortOrder = i + 1; });
   STATE.ingredients = list;
-  renderCurrentTab();
+  updateMasterIngListOnly();
 }
 
 function jumpIngredientOrder(ingId, newPosRaw) {
@@ -434,7 +520,7 @@ function jumpIngredientOrder(ingId, newPosRaw) {
   list.splice(target, 0, moved);
   list.forEach((item, i) => { item.sortOrder = i + 1; });
   STATE.ingredients = list;
-  renderCurrentTab();
+  updateMasterIngListOnly();
 }
 
 function changeIngredientSubCat(ingId, newCat) {
@@ -448,7 +534,7 @@ function changeIngredientSubCat(ingId, newCat) {
 
 function deleteIngredientItem(ingId) {
   STATE.ingredients = STATE.ingredients.filter(x => String(x.id) !== String(ingId));
-  renderCurrentTab();
+  updateMasterIngListOnly();
   showToast('Bahan dihapus dari daftar (tekan Simpan Susunan)');
 }
 
@@ -551,13 +637,68 @@ async function submitRawMaterialForm(editId) {
   }
 }
 
-function renderMasterTab(main) {
-  const isIngSub = STATE.masterSubTab === 'ingredients';
+function buildMasterIngListHtml() {
   const allSorted = getSortedIngredients();
+  const q = STATE.masterSearch.trim().toLowerCase();
   const sortedList = allSorted.filter(ing => {
-    const q = STATE.masterSearch.toLowerCase();
     return !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q);
   });
+
+  if (sortedList.length === 0) {
+    return `<div class="p-6 text-center text-xs text-stone-400">Bahan tidak ditemukan.</div>`;
+  }
+
+  return sortedList.map((ing) => {
+    const realPos = allSorted.findIndex(x => String(x.id) === String(ing.id)) + 1;
+    return `
+      <div class="p-3 flex items-center justify-between gap-2">
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-1.5">
+            ${STATE.masterEditMode ? `
+              <input type="number" min="1" max="${allSorted.length}" value="${realPos}"
+                onchange="jumpIngredientOrder('${ing.id}', this.value)"
+                class="w-11 px-1 py-0.5 rounded border border-amber-400 bg-amber-50 text-[11px] font-bold text-center text-amber-950" />
+            ` : `
+              <span class="text-[10px] font-bold text-stone-400">#${realPos}</span>
+            `}
+            <p class="text-xs font-bold text-stone-900 truncate">${escHtml(ing.name)}</p>
+          </div>
+          ${STATE.masterEditMode ? `
+            <select onchange="changeIngredientSubCat('${ing.id}', this.value)" class="mt-1 px-2 py-1 rounded-lg border border-stone-300 bg-stone-50 text-[11px] font-bold text-stone-800">
+              ${SUB_CATEGORIES.map(c => `<option value="${c}" ${ing.subCategory === c ? 'selected' : ''}>${c}</option>`).join('')}
+            </select>
+          ` : `
+            <p class="text-[10px] text-stone-500 mt-0.5">
+              <span class="px-1.5 py-0.5 rounded bg-stone-100 font-semibold text-stone-700">${escHtml(ing.subCategory)}</span>
+              • ${formatRp(ing.unitCost)} / ${escHtml(ing.unit)}
+            </p>
+          `}
+        </div>
+        ${STATE.masterEditMode ? `
+          <div class="flex items-center gap-1 shrink-0">
+            <button onclick="moveIngredientOrder('${ing.id}', -1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▲</button>
+            <button onclick="moveIngredientOrder('${ing.id}', 1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▼</button>
+            <button onclick="openAddRawMaterialModal('${escHtml(ing.id)}')" class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
+            <button onclick="deleteIngredientItem('${ing.id}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+          </div>
+        ` : `
+          <div class="text-right shrink-0">
+            <p class="text-xs font-bold text-stone-800">${formatRp(ing.price)}</p>
+            <p class="text-[10px] text-stone-400">/${formatNum(ing.packSize)} ${escHtml(ing.unit)}</p>
+          </div>
+        `}
+      </div>
+    `;
+  }).join('');
+}
+
+function updateMasterIngListOnly() {
+  const el = document.getElementById('masterIngListContainer');
+  if (el) el.innerHTML = buildMasterIngListHtml();
+}
+
+function renderMasterTab(main) {
+  const isIngSub = STATE.masterSubTab === 'ingredients';
 
   main.innerHTML = `
     <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3">
@@ -584,8 +725,9 @@ function renderMasterTab(main) {
           </button>
         </div>
         <div class="flex gap-2">
-          <input type="text" value="${escHtml(STATE.masterSearch)}" oninput="STATE.masterSearch=this.value; renderCurrentTab();"
-            placeholder="Cari bahan atau sub-kategori..." class="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+          <input id="masterSearchInput" type="text" value="${escHtml(STATE.masterSearch)}"
+            oninput="STATE.masterSearch=this.value; updateMasterIngListOnly();"
+            placeholder="Cari bahan atau sub-kategori..." class="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
           <button onclick="openAddRawMaterialModal()" class="px-3 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold shrink-0">
             + Tambah
           </button>
@@ -600,49 +742,8 @@ function renderMasterTab(main) {
         ` : ''}
       </section>
 
-      <section class="bg-white rounded-2xl shadow-sm border border-stone-200 divide-y divide-stone-100">
-        ${sortedList.map((ing) => {
-          const realPos = allSorted.findIndex(x => String(x.id) === String(ing.id)) + 1;
-          return `
-            <div class="p-3 flex items-center justify-between gap-2">
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5">
-                  ${STATE.masterEditMode ? `
-                    <input type="number" min="1" max="${allSorted.length}" value="${realPos}"
-                      onchange="jumpIngredientOrder('${ing.id}', this.value)"
-                      class="w-11 px-1 py-0.5 rounded border border-amber-400 bg-amber-50 text-[11px] font-bold text-center text-amber-950" />
-                  ` : `
-                    <span class="text-[10px] font-bold text-stone-400">#${realPos}</span>
-                  `}
-                  <p class="text-xs font-bold text-stone-900 truncate">${escHtml(ing.name)}</p>
-                </div>
-                ${STATE.masterEditMode ? `
-                  <select onchange="changeIngredientSubCat('${ing.id}', this.value)" class="mt-1 px-2 py-1 rounded-lg border border-stone-300 bg-stone-50 text-[11px] font-bold text-stone-800">
-                    ${SUB_CATEGORIES.map(c => `<option value="${c}" ${ing.subCategory === c ? 'selected' : ''}>${c}</option>`).join('')}
-                  </select>
-                ` : `
-                  <p class="text-[10px] text-stone-500 mt-0.5">
-                    <span class="px-1.5 py-0.5 rounded bg-stone-100 font-semibold text-stone-700">${escHtml(ing.subCategory)}</span>
-                    • ${formatRp(ing.unitCost)} / ${escHtml(ing.unit)}
-                  </p>
-                `}
-              </div>
-              ${STATE.masterEditMode ? `
-                <div class="flex items-center gap-1 shrink-0">
-                  <button onclick="moveIngredientOrder('${ing.id}', -1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▲</button>
-                  <button onclick="moveIngredientOrder('${ing.id}', 1)" class="w-7 h-7 rounded-lg bg-stone-100 font-bold text-xs">▼</button>
-                  <button onclick="openAddRawMaterialModal('${escHtml(ing.id)}')" class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
-                  <button onclick="deleteIngredientItem('${ing.id}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
-                </div>
-              ` : `
-                <div class="text-right shrink-0">
-                  <p class="text-xs font-bold text-stone-800">${formatRp(ing.price)}</p>
-                  <p class="text-[10px] text-stone-400">/${formatNum(ing.packSize)} ${escHtml(ing.unit)}</p>
-                </div>
-              `}
-            </div>
-          `;
-        }).join('')}
+      <section id="masterIngListContainer" class="bg-white rounded-2xl shadow-sm border border-stone-200 divide-y divide-stone-100">
+        ${buildMasterIngListHtml()}
       </section>
     ` : renderRecipesSubView()}
   `;
@@ -686,82 +787,150 @@ function normalizeRecipe(raw, idx) {
   return { id, name, category, sellingPrice, notes, items, hpp: computedHpp, margin };
 }
 
-function renderRecipesSubView() {
-  const recipes = STATE.recipes.map(normalizeRecipe);
-  return `
-    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 flex items-center justify-between gap-2">
-      <div>
-        <h2 class="text-sm font-bold text-stone-900">☕ Kalkulator &amp; Daftar Resep HPP</h2>
-        <p class="text-[11px] text-stone-500">Hitung otomatis HPP per cup dari 108+ harga bahan</p>
-      </div>
-      <button onclick="openRecipeModal()" class="px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0 active:scale-95">
-        + Resep HPP
-      </button>
-    </section>
+function buildRecipeCardsHtml() {
+  const allRecipes = STATE.recipes.map(normalizeRecipe);
+  const q = STATE.recipeSearch.trim().toLowerCase();
+  const recipes = allRecipes.filter(r => {
+    const matchCat = STATE.recipeCatFilter === 'ALL' || r.category === STATE.recipeCatFilter;
+    const matchQ = !q ||
+      r.name.toLowerCase().includes(q) ||
+      r.category.toLowerCase().includes(q) ||
+      r.items.some(it => it.name.toLowerCase().includes(q));
+    return matchCat && matchQ;
+  });
 
-    ${recipes.length === 0 ? `
+  if (allRecipes.length === 0) {
+    return `
       <div class="bg-white p-8 rounded-2xl text-center border border-stone-200">
         <p class="text-xs text-stone-500 mb-2.5">Belum ada resep minuman tercatat.</p>
         <button onclick="openRecipeModal()" class="px-4 py-2 rounded-xl bg-stone-900 text-white text-xs font-bold">
           + Racik Resep Pertama
         </button>
       </div>
-    ` : `
-      <section class="space-y-2.5">
-        ${recipes.map(r => {
-          const profit = r.sellingPrice - r.hpp;
-          const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
-          return `
-            <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-              <div class="flex items-start justify-between gap-2">
-                <div>
-                  <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-bold">${escHtml(r.category)}</span>
-                  <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(r.name)}</h3>
-                </div>
-                <div class="flex items-center gap-1">
-                  <button onclick="openRecipeModal('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
-                  <button onclick="deleteRecipeAction('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
-                </div>
-              </div>
+    `;
+  }
 
-              <div class="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-stone-100 text-[11px]">
-                <div>
-                  <span class="text-stone-400 block text-[10px]">Harga Jual</span>
-                  <b>${formatRp(r.sellingPrice)}</b>
-                </div>
-                <div>
-                  <span class="text-stone-400 block text-[10px]">HPP (${cogsPct}%)</span>
-                  <b class="text-amber-800">${formatRp(r.hpp)}</b>
-                </div>
-                <div>
-                  <span class="text-stone-400 block text-[10px]">Margin (${r.margin.toFixed(1)}%)</span>
-                  <b class="${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${formatRp(profit)}</b>
-                </div>
-              </div>
+  if (recipes.length === 0) {
+    return `
+      <div class="bg-white p-6 rounded-2xl text-center border border-stone-200 text-xs text-stone-400">
+        Menu tidak ditemukan untuk pencarian "<b>${escHtml(STATE.recipeSearch)}</b>".
+      </div>
+    `;
+  }
 
-              ${r.items.length > 0 ? `
-                <div class="mt-2.5 pt-2 border-t border-dashed border-stone-200 space-y-1">
-                  ${r.items.map(it => `
-                    <div class="flex justify-between text-[10px] text-stone-600">
-                      <span>• ${escHtml(it.name)} (${formatNum(it.qty)} ${escHtml(it.unit)})</span>
-                      <span class="font-semibold">${formatRp(it.qty * it.unitCost)}</span>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-              ${r.notes ? `<p class="mt-2 text-[10px] text-stone-500 bg-stone-50 px-2.5 py-1.5 rounded-lg">Catatan: ${escHtml(r.notes)}</p>` : ''}
+  return `
+    <section class="space-y-2.5">
+      ${recipes.map(r => {
+        const profit = r.sellingPrice - r.hpp;
+        const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
+        return `
+          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-700 font-bold">${escHtml(r.category)}</span>
+                <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(r.name)}</h3>
+              </div>
+              <div class="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                <button onclick="downloadSingleRecipeHppPdf('${escHtml(r.id)}')"
+                  class="px-2 h-7 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-900 text-[10px] font-bold active:scale-95" title="Download PDF HPP">
+                  📄 HPP
+                </button>
+                <button onclick="downloadSingleRecipeSopPdf('${escHtml(r.id)}')"
+                  class="px-2 h-7 rounded-lg bg-stone-100 border border-stone-300 text-stone-800 text-[10px] font-bold active:scale-95" title="Download PDF SOP">
+                  📋 SOP
+                </button>
+                <button onclick="openRecipeModal('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-amber-100 text-amber-900 text-xs">✏️</button>
+                <button onclick="deleteRecipeAction('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+              </div>
             </div>
-          `;
-        }).join('')}
-      </section>
-    `}
+
+            <div class="grid grid-cols-3 gap-2 mt-2.5 pt-2.5 border-t border-stone-100 text-[11px]">
+              <div>
+                <span class="text-stone-400 block text-[10px]">Harga Jual</span>
+                <b>${formatRp(r.sellingPrice)}</b>
+              </div>
+              <div>
+                <span class="text-stone-400 block text-[10px]">HPP (${cogsPct}%)</span>
+                <b class="text-amber-800">${formatRp(r.hpp)}</b>
+              </div>
+              <div>
+                <span class="text-stone-400 block text-[10px]">Margin (${r.margin.toFixed(1)}%)</span>
+                <b class="${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${formatRp(profit)}</b>
+              </div>
+            </div>
+
+            ${r.items.length > 0 ? `
+              <div class="mt-2.5 pt-2 border-t border-dashed border-stone-200 space-y-1">
+                ${r.items.map(it => `
+                  <div class="flex justify-between text-[10px] text-stone-600">
+                    <span>• ${escHtml(it.name)} (${formatNum(it.qty)} ${escHtml(it.unit)})</span>
+                    <span class="font-semibold">${formatRp(it.qty * it.unitCost)}</span>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+            ${r.notes ? `<p class="mt-2 text-[10px] text-stone-500 bg-stone-50 px-2.5 py-1.5 rounded-lg">Catatan: ${escHtml(r.notes)}</p>` : ''}
+          </div>
+        `;
+      }).join('')}
+    </section>
+  `;
+}
+
+function updateRecipeCardsOnly() {
+  const el = document.getElementById('recipeCardsContainer');
+  if (el) el.innerHTML = buildRecipeCardsHtml();
+}
+
+function renderRecipesSubView() {
+  return `
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <h2 class="text-sm font-bold text-stone-900">☕ Kalkulator &amp; Daftar Resep HPP</h2>
+          <p class="text-[11px] text-stone-500">Hitung otomatis HPP per cup &amp; cetak PDF HPP / SOP</p>
+        </div>
+        <button onclick="openRecipeModal()" class="px-3 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0 active:scale-95">
+          + Resep HPP
+        </button>
+      </div>
+
+      <div class="relative flex items-center">
+        <input id="recipeSearchInput" type="text" value="${escHtml(STATE.recipeSearch)}"
+          oninput="STATE.recipeSearch=this.value; updateRecipeCardsOnly();"
+          placeholder="Cari nama menu atau bahan resep..."
+          class="w-full pl-3 pr-8 py-2 rounded-xl border border-stone-300 bg-stone-50 focus:bg-white text-xs focus:border-amber-600 focus:outline-none" />
+        <button type="button" onclick="STATE.recipeSearch=''; document.getElementById('recipeSearchInput').value=''; updateRecipeCardsOnly();"
+          class="absolute right-2.5 text-stone-400 hover:text-stone-700 text-xs font-bold">✕</button>
+      </div>
+
+      <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        ${['ALL', 'Signature', 'Coffee', 'Non-Coffee', 'Matcha & Tea', 'Mocktail', 'Seasonal'].map(cat => `
+          <button onclick="STATE.recipeCatFilter='${cat}'; renderCurrentTab();"
+            class="px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0 ${STATE.recipeCatFilter === cat ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}">
+            ${cat === 'ALL' ? 'Semua' : cat}
+          </button>
+        `).join('')}
+      </div>
+    </section>
+
+    <div id="recipeCardsContainer">
+      ${buildRecipeCardsHtml()}
+    </div>
   `;
 }
 
 function openRecipeModal(editRecipeId = null) {
   const existing = editRecipeId ? STATE.recipes.map(normalizeRecipe).find(x => String(x.id) === String(editRecipeId)) : null;
   window._recipeDraftItems = existing ? existing.items.map(i => ({ ...i })) : [];
-  const sortedIngs = getSortedIngredients();
+
+  window._acCallbacks['rcpAc'] = (ing) => {
+    const qtyEl = document.getElementById('rcpIngQty');
+    if (qtyEl) {
+      qtyEl.placeholder = `Takaran (${ing.unit})`;
+      qtyEl.focus();
+    }
+  };
 
   openModal(existing ? 'Edit Resep & HPP' : '+ Tambah Resep & Hitung HPP', `
     <div class="space-y-3">
@@ -788,10 +957,8 @@ function openRecipeModal(editRecipeId = null) {
       </div>
 
       <div class="p-2.5 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
-        <p class="text-[11px] font-bold text-stone-800">Tambah Komposisi Bahan Baku</p>
-        <select id="rcpIngPicker" class="w-full px-2.5 py-2 rounded-lg border border-stone-300 text-xs bg-white">
-          ${sortedIngs.map(ing => `<option value="${escHtml(ing.id)}">${escHtml(ing.name)} (${formatRp(ing.unitCost)}/${escHtml(ing.unit)})</option>`).join('')}
-        </select>
+        <p class="text-[11px] font-bold text-stone-800">Tambah Komposisi Bahan Baku (Pencarian Cepat)</p>
+        ${renderIngAutocompleteHtml('rcpAc', '', 'Ketik nama bahan (misal: ube, matcha, milk)...')}
         <div class="flex gap-2">
           <input id="rcpIngQty" type="number" step="any" placeholder="Takaran (gram / ml / pcs)"
             class="flex-1 px-3 py-1.5 rounded-lg border border-stone-300 text-xs bg-white" />
@@ -822,11 +989,11 @@ function openRecipeModal(editRecipeId = null) {
 }
 
 function addIngredientToRecipeDraft() {
-  const ingId = document.getElementById('rcpIngPicker')?.value;
+  const ingId = document.getElementById('rcpAc_val')?.value;
   const qty = Number(document.getElementById('rcpIngQty')?.value) || 0;
   const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
   if (!ing || qty <= 0) {
-    showToast('Pilih bahan dan isi takaran > 0');
+    showToast('Pilih bahan dari pencarian dan isi takaran > 0');
     return;
   }
   const existingIdx = window._recipeDraftItems.findIndex(x => String(x.ingId) === String(ing.id));
@@ -843,6 +1010,7 @@ function addIngredientToRecipeDraft() {
   }
   const qtyInput = document.getElementById('rcpIngQty');
   if (qtyInput) qtyInput.value = '';
+  clearIngAutocomplete('rcpAc');
   renderRecipeDraftList();
 }
 
