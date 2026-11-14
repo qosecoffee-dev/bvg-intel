@@ -16,20 +16,57 @@ function quickOrderFromAlert(ingId) {
   setTimeout(() => openPurchaseOrderModal(null, ingId), 80);
 }
 
-function renderPoVendorTab(main) {
-  const isPo = STATE.poSubTab === 'po';
-  const [yStr, mStr, dStr] = STATE.poDate.split('-');
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-
-  const dailyOrders = STATE.purchaseOrders.filter(o => String(o.poDate) === STATE.poDate);
+function buildVendorListHtml() {
+  const q = STATE.vendorSearch.trim().toLowerCase();
   const filteredVendors = STATE.vendors.filter(v => {
-    const q = STATE.vendorSearch.toLowerCase();
     return !q ||
       String(v.ingName || '').toLowerCase().includes(q) ||
       String(v.supplier1 || '').toLowerCase().includes(q) ||
       String(v.supplier2 || '').toLowerCase().includes(q) ||
       String(v.supplier3 || '').toLowerCase().includes(q);
   });
+
+  if (filteredVendors.length === 0) {
+    return `
+      <div class="bg-white p-8 rounded-2xl text-center border border-stone-200 text-xs text-stone-500">
+        Belum ada data supplier ditemukan. Ketuk <b>+ Supplier</b> untuk menambahkan.
+      </div>
+    `;
+  }
+
+  return filteredVendors.map(v => `
+    <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <p class="text-xs font-bold text-stone-900">${escHtml(v.ingName)}</p>
+          <p class="text-[10px] text-stone-400">${escHtml(v.subCategory || '')}</p>
+        </div>
+        <div class="flex gap-1">
+          <button onclick='openAddVendorModal(${JSON.stringify(v).replace(/'/g, "&#39;")})' class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
+          <button onclick="deleteVendorAction('${escHtml(v.vendorId)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+        </div>
+      </div>
+      <div class="space-y-1 text-[11px]">
+        <div class="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950">
+          <b>Supplier 1:</b> ${escHtml(v.supplier1 || '-')}
+        </div>
+        ${v.supplier2 ? `<div class="px-2.5 py-1.5 rounded-lg bg-stone-50 border border-stone-200"><b>Supplier 2:</b> ${escHtml(v.supplier2)}</div>` : ''}
+        ${v.supplier3 ? `<div class="px-2.5 py-1.5 rounded-lg bg-stone-50 border border-stone-200"><b>Supplier 3:</b> ${escHtml(v.supplier3)}</div>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateVendorListOnly() {
+  const el = document.getElementById('vendorListContainer');
+  if (el) el.innerHTML = buildVendorListHtml();
+}
+
+function renderPoVendorTab(main) {
+  const isPo = STATE.poSubTab === 'po';
+  const [yStr, mStr, dStr] = STATE.poDate.split('-');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dailyOrders = STATE.purchaseOrders.filter(o => String(o.poDate) === STATE.poDate);
 
   main.innerHTML = `
     <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3">
@@ -128,40 +165,17 @@ function renderPoVendorTab(main) {
           </button>
         </div>
         <div class="flex gap-2">
-          <input type="text" value="${escHtml(STATE.vendorSearch)}" oninput="STATE.vendorSearch=this.value; renderCurrentTab();"
-            placeholder="Cari bahan atau nama supplier..." class="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+          <input id="vendorSearchInput" type="text" value="${escHtml(STATE.vendorSearch)}"
+            oninput="STATE.vendorSearch=this.value; updateVendorListOnly();"
+            placeholder="Cari bahan atau nama supplier..." class="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
           <button onclick="downloadVendorPdf()" class="px-3 py-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold shrink-0">
             📄 PDF
           </button>
         </div>
       </section>
 
-      <section class="space-y-2.5">
-        ${filteredVendors.length === 0 ? `
-          <div class="bg-white p-8 rounded-2xl text-center border border-stone-200 text-xs text-stone-500">
-            Belum ada data supplier. Ketuk <b>+ Supplier</b> untuk menambahkan.
-          </div>
-        ` : filteredVendors.map(v => `
-          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-            <div class="flex items-start justify-between gap-2 mb-2">
-              <div>
-                <p class="text-xs font-bold text-stone-900">${escHtml(v.ingName)}</p>
-                <p class="text-[10px] text-stone-400">${escHtml(v.subCategory || '')}</p>
-              </div>
-              <div class="flex gap-1">
-                <button onclick='openAddVendorModal(${JSON.stringify(v).replace(/'/g, "&#39;")})' class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
-                <button onclick="deleteVendorAction('${escHtml(v.vendorId)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
-              </div>
-            </div>
-            <div class="space-y-1 text-[11px]">
-              <div class="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-950">
-                <b>Supplier 1:</b> ${escHtml(v.supplier1 || '-')}
-              </div>
-              ${v.supplier2 ? `<div class="px-2.5 py-1.5 rounded-lg bg-stone-50 border border-stone-200"><b>Supplier 2:</b> ${escHtml(v.supplier2)}</div>` : ''}
-              ${v.supplier3 ? `<div class="px-2.5 py-1.5 rounded-lg bg-stone-50 border border-stone-200"><b>Supplier 3:</b> ${escHtml(v.supplier3)}</div>` : ''}
-            </div>
-          </div>
-        `).join('')}
+      <section id="vendorListContainer" class="space-y-2.5">
+        ${buildVendorListHtml()}
       </section>
     `}
   `;
@@ -169,30 +183,36 @@ function renderPoVendorTab(main) {
 
 function openPurchaseOrderModal(editPo = null, preselectIngId = null) {
   const sorted = getSortedIngredients();
-  const targetIngId = editPo ? editPo.ingId : (preselectIngId || (sorted[0] ? sorted[0].id : ''));
-  const selectedIng = sorted.find(x => String(x.id) === String(targetIngId)) || sorted[0] || { id: '', name: '', unit: 'gram', subCategory: '' };
-  const autoStock = editPo ? editPo.sisaStock : getCurrentStock(selectedIng.id);
+  const targetIngId = editPo ? editPo.ingId : (preselectIngId || '');
+  const selectedIng = targetIngId ? sorted.find(x => String(x.id) === String(targetIngId)) : null;
+  const autoStock = editPo ? editPo.sisaStock : (selectedIng ? getCurrentStock(selectedIng.id) : 0);
+  const unitLabel = selectedIng ? selectedIng.unit : 'unit';
+
+  window._acCallbacks['poAc'] = (ing) => {
+    const stockEl = document.getElementById('poSisaStock');
+    if (stockEl) stockEl.value = getCurrentStock(ing.id);
+    const u1 = document.getElementById('poUnitLabel1');
+    const u2 = document.getElementById('poUnitLabel2');
+    if (u1) u1.textContent = ing.unit;
+    if (u2) u2.textContent = ing.unit;
+    const qtyEl = document.getElementById('poQtyOrder');
+    if (qtyEl) qtyEl.focus();
+  };
 
   openModal(editPo ? 'Edit Order Bahan Baku' : '+ Order Bahan Baku Bar', `
     <div class="space-y-3">
       <div>
-        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Bahan Baku</label>
-        <select id="poIngSelect" onchange="onPoIngredientSelectChange()" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white font-semibold">
-          ${sorted.map(ing => `
-            <option value="${escHtml(ing.id)}" ${String(ing.id) === String(selectedIng.id) ? 'selected' : ''}>
-              ${escHtml(ing.name)} (${escHtml(ing.subCategory)} - ${escHtml(ing.unit)})
-            </option>
-          `).join('')}
-        </select>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Bahan Baku (Pencarian Cepat)</label>
+        ${renderIngAutocompleteHtml('poAc', selectedIng ? selectedIng.id : '', 'Ketik nama bahan baku bar...')}
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div>
-          <label class="block text-xs font-bold text-stone-700 mb-1">Sisa Stock (<span id="poUnitLabel1">${escHtml(selectedIng.unit)}</span>)</label>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Sisa Stock (<span id="poUnitLabel1">${escHtml(unitLabel)}</span>)</label>
           <input id="poSisaStock" type="number" step="any" value="${autoStock}"
             class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs bg-stone-50 font-bold" />
         </div>
         <div>
-          <label class="block text-xs font-bold text-stone-700 mb-1">Jumlah Order (<span id="poUnitLabel2">${escHtml(selectedIng.unit)}</span>)</label>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Jumlah Order (<span id="poUnitLabel2">${escHtml(unitLabel)}</span>)</label>
           <input id="poQtyOrder" type="number" step="any" value="${editPo ? editPo.qtyOrder : ''}" placeholder="Masukkan jumlah"
             class="w-full px-3 py-2 rounded-xl border border-amber-400 text-xs font-bold focus:outline-none" />
         </div>
@@ -215,20 +235,8 @@ function openPurchaseOrderModal(editPo = null, preselectIngId = null) {
   `);
 }
 
-function onPoIngredientSelectChange() {
-  const ingId = document.getElementById('poIngSelect')?.value;
-  const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
-  if (!ing) return;
-  const stockEl = document.getElementById('poSisaStock');
-  if (stockEl) stockEl.value = getCurrentStock(ing.id);
-  const u1 = document.getElementById('poUnitLabel1');
-  const u2 = document.getElementById('poUnitLabel2');
-  if (u1) u1.textContent = ing.unit;
-  if (u2) u2.textContent = ing.unit;
-}
-
 async function submitPurchaseOrderForm(editPoId) {
-  const ingId = document.getElementById('poIngSelect')?.value || '';
+  const ingId = document.getElementById('poAc_val')?.value || '';
   const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
   const sisaStock = Number(document.getElementById('poSisaStock')?.value) || 0;
   const qtyOrder = Number(document.getElementById('poQtyOrder')?.value) || 0;
@@ -236,7 +244,7 @@ async function submitPurchaseOrderForm(editPoId) {
   const notes = (document.getElementById('poNotes')?.value || '').trim();
 
   if (!ing || qtyOrder <= 0) {
-    showToast('Pilih bahan dan isi jumlah order > 0');
+    showToast('Pilih bahan dari pencarian dan isi jumlah order > 0');
     return;
   }
   closeModal();
@@ -263,20 +271,18 @@ async function deletePoAction(poId) {
 }
 
 function openAddVendorModal(editVendor = null) {
-  const sorted = getSortedIngredients();
-  const selId = editVendor ? editVendor.ingId : (sorted[0] ? sorted[0].id : '');
+  const selId = editVendor ? editVendor.ingId : '';
+
+  window._acCallbacks['vndAc'] = () => {
+    const sup1 = document.getElementById('vndSup1');
+    if (sup1) sup1.focus();
+  };
 
   openModal(editVendor ? 'Edit Supplier Bahan' : '+ Tambah Supplier Bahan', `
     <div class="space-y-3">
       <div>
-        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Bahan</label>
-        <select id="vndIngSelect" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs bg-white font-semibold">
-          ${sorted.map(ing => `
-            <option value="${escHtml(ing.id)}" ${String(ing.id) === String(selId) ? 'selected' : ''}>
-              ${escHtml(ing.name)} (${escHtml(ing.subCategory)})
-            </option>
-          `).join('')}
-        </select>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Bahan (Pencarian Cepat)</label>
+        ${renderIngAutocompleteHtml('vndAc', selId, 'Ketik nama bahan baku...')}
       </div>
       <div>
         <label class="block text-xs font-bold text-stone-700 mb-1">Supplier 1 (Utama)</label>
@@ -302,14 +308,14 @@ function openAddVendorModal(editVendor = null) {
 }
 
 async function submitVendorForm(editVendorId) {
-  const ingId = document.getElementById('vndIngSelect')?.value || '';
+  const ingId = document.getElementById('vndAc_val')?.value || '';
   const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
   const supplier1 = (document.getElementById('vndSup1')?.value || '').trim();
   const supplier2 = (document.getElementById('vndSup2')?.value || '').trim();
   const supplier3 = (document.getElementById('vndSup3')?.value || '').trim();
 
   if (!ing || !supplier1) {
-    showToast('Nama bahan dan Supplier 1 wajib diisi');
+    showToast('Pilih bahan dari pencarian dan isi Supplier 1');
     return;
   }
   closeModal();
@@ -398,7 +404,6 @@ function downloadMonthlyPdf() {
   const sorted = getSortedIngredients();
   const summaryMap = getMonthlySummaryMap(mKey);
 
-  // Lookup daily entries per ingredient & day (1..31)
   const dayMap = {};
   STATE.invDaily.filter(r => String(r.monthKey) === mKey).forEach(r => {
     dayMap[`${r.ingId}__${Number(r.day)}`] = {
@@ -410,22 +415,21 @@ function downloadMonthlyPdf() {
 
   let grandTotalValueSo = 0;
 
-  // PAGE 1+: Monthly Summary + SO + Selisih + Pemakaian Bar + Value SO + Grand Total Rupiah
   doc.setFontSize(13);
   doc.setFont(undefined, 'bold');
   doc.text(`QOSE COFFEE — REKAP BULANAN INVENTORY & STOCK OPNAME (${mKey})`, 10, 13);
   doc.setFontSize(8.5);
   doc.setFont(undefined, 'normal');
-  doc.text('Bagian 1: Rekap Total IN / OUT / CL, Stock Opname (SO), Selisih, Data Pemakaian Bar & Valuasi Stok', 10, 18.5);
+  doc.text('Bagian 1: Rekap Total IN / OUT / CL, Stock Opname (SO), Selisih, Pemakaian Bar (Rp) & Valuasi Stok Fisik', 10, 18.5);
 
   const summaryBody = sorted.map((ing, idx) => {
-    const s = summaryMap[ing.id] || { totalIn: 0, totalOut: 0, totalCl: 0, soQty: '', selisih: 0, pemakaianBar: '', valueSo: 0 };
+    const s = summaryMap[ing.id] || { totalIn: 0, totalOut: 0, totalCl: 0, soQty: '', selisih: 0, pemakaianBar: 0, valueSo: 0 };
     const draft = STATE.draftMonthly[mKey + '__' + ing.id] || {};
     const soVal = draft.soQty !== undefined ? draft.soQty : s.soQty;
-    const barVal = draft.pemakaianBar !== undefined ? draft.pemakaianBar : s.pemakaianBar;
     const hasSo = soVal !== '' && soVal !== null && soVal !== undefined;
     const selisih = hasSo ? (Number(soVal) - Number(s.totalCl || 0)) : 0;
-    const valSo = hasSo ? (Number(soVal) * ing.unitCost) : 0;
+    const valSo = hasSo ? (Number(soVal) * (Number(ing.unitCost) || 0)) : 0;
+    const pemakaianBarRp = Number(s.pemakaianBar) || 0;
     grandTotalValueSo += valSo;
 
     return [
@@ -438,20 +442,36 @@ function downloadMonthlyPdf() {
       formatNum(s.totalCl),
       hasSo ? formatNum(soVal) : '-',
       hasSo ? formatNum(selisih) : '-',
-      barVal !== '' && barVal !== undefined ? String(barVal) : '-',
+      formatRp(pemakaianBarRp),
       formatRp(valSo)
     ];
   });
+
+  const totalRowIdx = summaryBody.length;
+  const acuanRowIdx = summaryBody.length + 1;
+  const isOverLimit = grandTotalValueSo > 20000000;
+
+  // Hanya muncul SATU KALI di baris paling akhir halaman terakhir
+  summaryBody.push([
+    '',
+    'TOTAL NILAI RUPIAH STOCK FISIK (VALUE SO)',
+    '', '', '', '', '', '', '', '',
+    formatRp(grandTotalValueSo)
+  ]);
+  summaryBody.push([
+    '',
+    'ACUAN / BATAS MAKSIMAL STOK FISIK',
+    '', '', '', '', '', '', '', '',
+    'Rp 20.000.000'
+  ]);
 
   doc.autoTable({
     startY: 22,
     margin: { left: 10, right: 10 },
     head: [['No', 'Nama Bahan', 'Sub Kategori', 'Satuan', 'Total IN', 'Total OUT', 'Total CL', 'SO', 'Selisih', 'Data Pemakaian Bar', 'Data Value SO']],
     body: summaryBody,
-    foot: [['', 'TOTAL NILAI RUPIAH STOCK (VALUE SO)', '', '', '', '', '', '', '', '', formatRp(grandTotalValueSo)]],
     styles: { fontSize: 7, cellPadding: 1.5, lineColor: [210, 210, 210], lineWidth: 0.1 },
     headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold' },
-    footStyles: { fillColor: [254, 243, 199], textColor: [120, 53, 15], fontStyle: 'bold', fontSize: 8 },
     alternateRowStyles: { fillColor: [250, 250, 249] },
     columnStyles: {
       0: { cellWidth: 9, halign: 'center' },
@@ -463,12 +483,30 @@ function downloadMonthlyPdf() {
       6: { halign: 'right', fontStyle: 'bold' },
       7: { halign: 'right' },
       8: { halign: 'right' },
-      9: { halign: 'center' },
+      9: { halign: 'right' },
       10: { halign: 'right', fontStyle: 'bold' }
+    },
+    didParseCell: data => {
+      if (data.section === 'body' && data.row.index === totalRowIdx) {
+        data.cell.styles.fillColor = [254, 243, 199];
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fontSize = 8;
+        if (data.column.index === 10) {
+          data.cell.styles.textColor = isOverLimit ? [220, 38, 38] : [5, 150, 105];
+        } else {
+          data.cell.styles.textColor = [120, 53, 15];
+        }
+      }
+      if (data.section === 'body' && data.row.index === acuanRowIdx) {
+        data.cell.styles.fillColor = [245, 245, 244];
+        data.cell.styles.fontStyle = 'bold';
+        data.cell.styles.fontSize = 7.5;
+        data.cell.styles.textColor = [68, 64, 60];
+      }
     }
   });
 
-  // NEXT PAGES: Daily Breakdown Tanggal 1 - 31 split into 3 clean blocks (1-11, 12-21, 22-31)
+  // Rincian Harian Tanggal 1 - 31
   const dayRanges = [
     { start: 1, end: 11, label: 'Tanggal 1 – 11' },
     { start: 12, end: 21, label: 'Tanggal 12 – 21' },
@@ -528,6 +566,157 @@ function downloadMonthlyPdf() {
 
   doc.save(`Laporan-Bulanan-Inventory-Qose-${mKey}.pdf`);
   showToast('PDF Bulanan Lengkap berhasil diunduh');
+}
+
+function downloadSingleRecipeHppPdf(recipeId) {
+  const doc = createPdfDoc('p');
+  if (!doc) return;
+  const recipes = STATE.recipes.map(normalizeRecipe);
+  const r = recipes.find(x => String(x.id) === String(recipeId));
+  if (!r) return;
+
+  const profit = r.sellingPrice - r.hpp;
+  const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
+  const marginPct = r.margin.toFixed(1);
+
+  doc.setFontSize(13);
+  doc.setFont(undefined, 'bold');
+  doc.text('QOSE COFFEE — KARTU COSTING & HPP (COGS) MENU', 14, 15);
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
+  doc.text(`Dicetak: ${new Date().toISOString().slice(0, 10)}`, 14, 21);
+
+  doc.setDrawColor(210, 210, 210);
+  doc.setFillColor(250, 250, 249);
+  doc.roundedRect(14, 25, 182, 24, 2, 2, 'FD');
+
+  doc.setFontSize(11);
+  doc.setFont(undefined, 'bold');
+  doc.text(`${r.name}  [${r.category}]`, 18, 32);
+
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
+  doc.text(`Harga Jual: ${formatRp(r.sellingPrice)}`, 18, 40);
+  doc.text(`Total HPP: ${formatRp(r.hpp)} (${cogsPct}%)`, 80, 40);
+  doc.text(`Gross Profit: ${formatRp(profit)} (Margin ${marginPct}%)`, 140, 40);
+
+  const body = r.items.map((it, idx) => [
+    idx + 1,
+    it.name,
+    formatNum(it.qty),
+    it.unit,
+    `${formatRp(it.unitCost)}/${it.unit}`,
+    formatRp(it.qty * it.unitCost)
+  ]);
+
+  body.push([
+    '',
+    'TOTAL HPP (COGS) PER CUP',
+    '', '', '',
+    formatRp(r.hpp)
+  ]);
+
+  doc.autoTable({
+    startY: 54,
+    head: [['No', 'Komposisi Bahan Baku', 'Takaran', 'Satuan', 'Harga Satuan', 'Subtotal HPP']],
+    body,
+    styles: { fontSize: 8.5, cellPadding: 2.2 },
+    headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold' },
+    columnStyles: {
+      0: { cellWidth: 12, halign: 'center' },
+      2: { halign: 'right' },
+      3: { halign: 'center' },
+      4: { halign: 'right' },
+      5: { halign: 'right', fontStyle: 'bold' }
+    },
+    didParseCell: data => {
+      if (data.section === 'body' && data.row.index === body.length - 1) {
+        data.cell.styles.fillColor = [254, 243, 199];
+        data.cell.styles.textColor = [120, 53, 15];
+        data.cell.styles.fontStyle = 'bold';
+      }
+    }
+  });
+
+  if (r.notes) {
+    const finalY = (doc.lastAutoTable?.finalY || 110) + 8;
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'bold');
+    doc.text('Catatan / SOP Penyajian:', 14, finalY);
+    doc.setFont(undefined, 'normal');
+    doc.text(doc.splitTextToSize(r.notes, 180), 14, finalY + 5);
+  }
+
+  const safeSlug = r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  doc.save(`HPP-${safeSlug}-Qose.pdf`);
+  showToast(`PDF HPP ${r.name} berhasil diunduh`);
+}
+
+function downloadSingleRecipeSopPdf(recipeId) {
+  const doc = createPdfDoc('p');
+  if (!doc) return;
+  const recipes = STATE.recipes.map(normalizeRecipe);
+  const r = recipes.find(x => String(x.id) === String(recipeId));
+  if (!r) return;
+
+  doc.setFontSize(14);
+  doc.setFont(undefined, 'bold');
+  doc.text('QOSE COFFEE — STANDARD OPERATING PROCEDURE (SOP) BAR', 14, 16);
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
+  doc.text(`Panduan Takaran & Penyajian Minuman   |   Dicetak: ${new Date().toISOString().slice(0, 10)}`, 14, 22);
+
+  doc.setDrawColor(28, 25, 23);
+  doc.setFillColor(245, 245, 244);
+  doc.roundedRect(14, 27, 182, 18, 2, 2, 'FD');
+
+  doc.setFontSize(12);
+  doc.setFont(undefined, 'bold');
+  doc.text(`MENU: ${r.name.toUpperCase()}`, 18, 35);
+  doc.setFontSize(9.5);
+  doc.setFont(undefined, 'normal');
+  doc.text(`Kategori: ${r.category}`, 18, 41);
+
+  const body = r.items.map((it, idx) => [
+    idx + 1,
+    it.name,
+    formatNum(it.qty),
+    it.unit
+  ]);
+
+  doc.autoTable({
+    startY: 50,
+    head: [['No', 'Nama Bahan Baku', 'Takaran', 'Satuan']],
+    body,
+    styles: { fontSize: 9.5, cellPadding: 2.8 },
+    headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [250, 250, 249] },
+    columnStyles: {
+      0: { cellWidth: 15, halign: 'center' },
+      2: { cellWidth: 35, halign: 'right', fontStyle: 'bold' },
+      3: { cellWidth: 30, halign: 'center' }
+    }
+  });
+
+  const finalY = (doc.lastAutoTable?.finalY || 110) + 10;
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'bold');
+  doc.text('LANGKAH & CATATAN PENYAJIAN (SOP BAR):', 14, finalY);
+
+  doc.setDrawColor(210, 210, 210);
+  doc.setFillColor(255, 251, 235);
+  const noteText = r.notes || 'Siapkan bahan sesuai takaran di atas, pastikan konsistensi rasa dan suhu penyajian sesuai standar Qose Coffee.';
+  const wrappedNotes = doc.splitTextToSize(noteText, 174);
+  const boxHeight = Math.max(18, wrappedNotes.length * 5.5 + 8);
+  doc.roundedRect(14, finalY + 3, 182, boxHeight, 2, 2, 'FD');
+
+  doc.setFontSize(9.5);
+  doc.setFont(undefined, 'normal');
+  doc.text(wrappedNotes, 18, finalY + 10);
+
+  const safeSlug = r.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  doc.save(`SOP-${safeSlug}-Qose.pdf`);
+  showToast(`PDF SOP ${r.name} berhasil diunduh`);
 }
 
 function downloadParStockPdf() {
