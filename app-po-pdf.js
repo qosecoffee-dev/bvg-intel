@@ -1,4 +1,6 @@
 // ==================== PO & VENDOR DIRECTORY TAB ====================
+if (STATE.poSearch === undefined) STATE.poSearch = '';
+
 function setPoDateParts(year, month, day) {
   const y = Number(year);
   const m = Number(month);
@@ -14,6 +16,75 @@ function quickOrderFromAlert(ingId) {
   STATE.poDate = new Date().toISOString().slice(0, 10);
   renderCurrentTab();
   setTimeout(() => openPurchaseOrderModal(null, ingId), 80);
+}
+
+function buildPoListHtml() {
+  const dailyOrders = STATE.purchaseOrders.filter(o => String(o.poDate) === STATE.poDate);
+  if (dailyOrders.length === 0) {
+    return `
+      <div class="bg-white p-8 rounded-2xl text-center border border-stone-200">
+        <p class="text-xs font-semibold text-stone-500">Belum ada Purchasing Order pada tanggal ${STATE.poDate}.</p>
+        <button onclick="openPurchaseOrderModal()" class="mt-2.5 px-3.5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold">
+          + Buat Order Pertama
+        </button>
+      </div>
+    `;
+  }
+
+  const q = String(STATE.poSearch || '').trim().toLowerCase();
+  const filteredOrders = dailyOrders.filter(po => {
+    return !q ||
+      String(po.ingName || '').toLowerCase().includes(q) ||
+      String(po.subCategory || '').toLowerCase().includes(q) ||
+      String(po.notes || '').toLowerCase().includes(q);
+  });
+
+  if (filteredOrders.length === 0) {
+    return `
+      <div class="bg-white p-6 rounded-2xl text-center border border-stone-200 space-y-2">
+        <p class="text-xs text-stone-500">Tidak ada item PO yang cocok dengan pencarian "<b>${escHtml(STATE.poSearch)}</b>".</p>
+        <button type="button" onclick="STATE.poSearch=''; const el=document.getElementById('poSearchInput'); if(el) el.value=''; updatePoListOnly();"
+          class="px-3 py-1.5 rounded-xl bg-stone-100 text-stone-700 text-[11px] font-bold">
+          Reset Pencarian
+        </button>
+      </div>
+    `;
+  }
+
+  return filteredOrders.map(po => `
+    <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+      <div class="flex items-start justify-between gap-2">
+        <div>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(po.subCategory || 'Bahan Bar')}</span>
+          <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(po.ingName)}</h3>
+        </div>
+        <div class="flex gap-1">
+          <button onclick='openPurchaseOrderModal(${JSON.stringify(po).replace(/'/g, "&#39;")})' class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
+          <button onclick="deletePoAction('${escHtml(po.poId)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-2 mt-2.5 pt-2 border-t border-stone-100 text-[11px]">
+        <div>
+          <span class="text-stone-400 block text-[10px]">Sisa Stock</span>
+          <b>${formatNum(po.sisaStock)} ${escHtml(po.unit)}</b>
+        </div>
+        <div>
+          <span class="text-stone-400 block text-[10px]">Jumlah Order</span>
+          <b class="text-amber-700">${formatNum(po.qtyOrder)} ${escHtml(po.unit)}</b>
+        </div>
+        <div>
+          <span class="text-stone-400 block text-[10px]">Tgl Dibutuhkan</span>
+          <b>${escHtml(po.neededDate || '-')}</b>
+        </div>
+      </div>
+      ${po.notes ? `<p class="mt-2 text-[11px] text-stone-600 bg-stone-50 px-2.5 py-1.5 rounded-lg">Ket: ${escHtml(po.notes)}</p>` : ''}
+    </div>
+  `).join('');
+}
+
+function updatePoListOnly() {
+  const el = document.getElementById('poListContainer');
+  if (el) el.innerHTML = buildPoListHtml();
 }
 
 function buildVendorListHtml() {
@@ -110,48 +181,23 @@ function renderPoVendorTab(main) {
           </select>
         </div>
 
+        <!-- Pencarian Cepat Daftar PO Harian -->
+        <div class="relative flex items-center">
+          <input id="poSearchInput" type="text" value="${escHtml(STATE.poSearch)}"
+            oninput="STATE.poSearch=this.value; updatePoListOnly();"
+            placeholder="Cari nama bahan, kategori, atau keterangan PO..."
+            class="w-full pl-3 pr-8 py-2 rounded-xl border border-stone-300 bg-stone-50 focus:bg-white text-xs focus:border-amber-600 focus:outline-none" />
+          <button type="button" onclick="STATE.poSearch=''; const el=document.getElementById('poSearchInput'); if(el) el.value=''; updatePoListOnly();"
+            class="absolute right-2.5 text-stone-400 hover:text-stone-700 text-xs font-bold">✕</button>
+        </div>
+
         <button onclick="downloadPoPdf()" class="w-full py-2 rounded-xl bg-stone-900 text-white text-xs font-bold active:scale-95">
           📄 Download PDF Purchasing Order (${dStr}/${mStr}/${yStr})
         </button>
       </section>
 
-      <section class="space-y-2.5">
-        ${dailyOrders.length === 0 ? `
-          <div class="bg-white p-8 rounded-2xl text-center border border-stone-200">
-            <p class="text-xs font-semibold text-stone-500">Belum ada Purchasing Order pada tanggal ${STATE.poDate}.</p>
-            <button onclick="openPurchaseOrderModal()" class="mt-2.5 px-3.5 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold">
-              + Buat Order Pertama
-            </button>
-          </div>
-        ` : dailyOrders.map(po => `
-          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-            <div class="flex items-start justify-between gap-2">
-              <div>
-                <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(po.subCategory || 'Bahan Bar')}</span>
-                <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(po.ingName)}</h3>
-              </div>
-              <div class="flex gap-1">
-                <button onclick='openPurchaseOrderModal(${JSON.stringify(po).replace(/'/g, "&#39;")})' class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
-                <button onclick="deletePoAction('${escHtml(po.poId)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
-              </div>
-            </div>
-            <div class="grid grid-cols-3 gap-2 mt-2.5 pt-2 border-t border-stone-100 text-[11px]">
-              <div>
-                <span class="text-stone-400 block text-[10px]">Sisa Stock</span>
-                <b>${formatNum(po.sisaStock)} ${escHtml(po.unit)}</b>
-              </div>
-              <div>
-                <span class="text-stone-400 block text-[10px]">Jumlah Order</span>
-                <b class="text-amber-700">${formatNum(po.qtyOrder)} ${escHtml(po.unit)}</b>
-              </div>
-              <div>
-                <span class="text-stone-400 block text-[10px]">Tgl Dibutuhkan</span>
-                <b>${escHtml(po.neededDate || '-')}</b>
-              </div>
-            </div>
-            ${po.notes ? `<p class="mt-2 text-[11px] text-stone-600 bg-stone-50 px-2.5 py-1.5 rounded-lg">Ket: ${escHtml(po.notes)}</p>` : ''}
-          </div>
-        `).join('')}
+      <section id="poListContainer" class="space-y-2.5">
+        ${buildPoListHtml()}
       </section>
     ` : `
       <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
