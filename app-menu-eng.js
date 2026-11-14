@@ -2,24 +2,64 @@
 STATE.menuEngCat = 'ALL';
 STATE.menuEngQuad = 'ALL';
 
-function getSavedMenuSalesMap() {
+const MENU_ENG_MONTH_NAMES = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+function getMenuEngPeriodKey() {
+  return `${STATE.menuEngYear}-${STATE.menuEngMonth}`;
+}
+
+function getMenuEngPeriodLabel() {
+  const mIdx = Math.max(0, Math.min(11, Number(STATE.menuEngMonth) - 1));
+  return `${MENU_ENG_MONTH_NAMES[mIdx]} ${STATE.menuEngYear}`;
+}
+
+function getAllPeriodMenuSalesStore() {
   try {
-    return JSON.parse(localStorage.getItem('bvg_intel_menu_sales') || '{}');
+    return JSON.parse(localStorage.getItem('bvg_intel_menu_sales_by_period') || '{}');
   } catch (e) {
     return {};
   }
 }
 
-function setSavedMenuSales(recipeId, qty) {
-  const map = getSavedMenuSalesMap();
-  map[String(recipeId)] = Number(qty) || 0;
+function getSavedMenuSalesMap(periodKey) {
+  const pKey = periodKey || getMenuEngPeriodKey();
+  const store = getAllPeriodMenuSalesStore();
+  if (store[pKey]) return store[pKey];
+
+  const curKey = new Date().toISOString().slice(0, 7);
+  if (pKey === curKey) {
+    try {
+      const legacy = JSON.parse(localStorage.getItem('bvg_intel_menu_sales') || 'null');
+      if (legacy && typeof legacy === 'object') return legacy;
+    } catch (e) {}
+  }
+  return {};
+}
+
+function setSavedMenuSales(recipeId, qty, periodKey) {
+  const pKey = periodKey || getMenuEngPeriodKey();
+  const store = getAllPeriodMenuSalesStore();
+  if (!store[pKey]) store[pKey] = {};
+  store[pKey][String(recipeId)] = Number(qty) || 0;
   try {
-    localStorage.setItem('bvg_intel_menu_sales', JSON.stringify(map));
+    localStorage.setItem('bvg_intel_menu_sales_by_period', JSON.stringify(store));
   } catch (e) {}
 }
 
+function setMenuEngPeriod(monthVal, yearVal) {
+  STATE.menuEngMonth = String(monthVal).padStart(2, '0');
+  STATE.menuEngYear = String(yearVal);
+  renderCurrentTab();
+}
+
 function getMenuEngineeringAnalysis() {
-  const salesMap = getSavedMenuSalesMap();
+  const pKey = getMenuEngPeriodKey();
+  const salesMap = getSavedMenuSalesMap(pKey);
+  const curKey = new Date().toISOString().slice(0, 7);
+
   const baseList = STATE.recipes.map((raw, idx) => {
     const r = typeof normalizeRecipe === 'function'
       ? normalizeRecipe(raw, idx)
@@ -30,9 +70,16 @@ function getMenuEngineeringAnalysis() {
           sellingPrice: Number(raw.sellingPrice || raw['Harga Jual'] || 0) || 0,
           hpp: Number(raw.hpp || raw['HPP'] || 0) || 0
         };
-    const savedQty = salesMap[r.id] !== undefined
-      ? Number(salesMap[r.id])
-      : (Number(raw.salesQty !== undefined ? raw.salesQty : (raw['Terjual'] || raw['Sales'] || 0)) || 0);
+
+    let savedQty = 0;
+    if (salesMap[r.id] !== undefined) {
+      savedQty = Number(salesMap[r.id]) || 0;
+    } else if (raw.salesByMonth && raw.salesByMonth[pKey] !== undefined) {
+      savedQty = Number(raw.salesByMonth[pKey]) || 0;
+    } else if (pKey === curKey) {
+      savedQty = Number(raw.salesQty !== undefined ? raw.salesQty : (raw['Terjual'] || raw['Sales'] || 0)) || 0;
+    }
+
     const cm = r.sellingPrice - r.hpp;
     const totalRevenue = r.sellingPrice * savedQty;
     const totalProfit = cm * savedQty;
@@ -44,7 +91,6 @@ function getMenuEngineeringAnalysis() {
   const totalProfitAll = filtered.reduce((s, x) => s + x.totalProfit, 0);
   const totalRevenueAll = filtered.reduce((s, x) => s + x.totalRevenue, 0);
 
-  // Weighted Average Contribution Margin & 70% Popularity Rule
   const avgCm = totalUnits > 0
     ? (totalProfitAll / totalUnits)
     : (filtered.length > 0 ? filtered.reduce((s, x) => s + x.cm, 0) / filtered.length : 0);
@@ -83,23 +129,85 @@ function getMenuEngineeringAnalysis() {
   return { items: analyzed, totalUnits, totalProfitAll, totalRevenueAll, avgCm, popBenchmark };
 }
 
-function onMenuSalesInput(recipeId, val) {
-  setSavedMenuSales(recipeId, val === '' ? 0 : (Number(val) || 0));
-  renderCurrentTab();
+function updateMenuEngLiveMetrics() {
+  const { items, totalUnits, totalProfitAll, avgCm, popBenchmark } = getMenuEngineeringAnalysis();
+
+  const uEl = document.getElementById('meTotalUnits');
+  const mEl = document.getElementById('meAvgCm');
+  const pEl = document.getElementById('meTotalProfit');
+  if (uEl) uEl.textContent = `${formatNum(totalUnits)} cup`;
+  if (mEl) mEl.textContent = formatRp(avgCm);
+  if (pEl) pEl.textContent = formatRp(totalProfitAll);
+
+  const counts = {
+    STAR: items.filter(x => x.quadrant === 'STAR').length,
+    PLOWHORSE: items.filter(x => x.quadrant === 'PLOWHORSE').length,
+    PUZZLE: items.filter(x => x.quadrant === 'PUZZLE').length,
+    DOG: items.filter(x => x.quadrant === 'DOG').length
+  };
+  ['STAR', 'PLOWHORSE', 'PUZZLE', 'DOG'].forEach(q => {
+    const cEl = document.getElementById('meCount_' + q);
+    if (cEl) cEl.textContent = counts[q];
+  });
+
+  items.forEach(item => {
+    const badgeEl = document.getElementById('meBadge_' + item.id);
+    if (badgeEl) {
+      badgeEl.textContent = item.badge;
+      badgeEl.className = `text-[10px] px-2 py-0.5 rounded-full border font-bold ${item.badgeClass}`;
+    }
+    const mixEl = document.getElementById('meMix_' + item.id);
+    if (mixEl) mixEl.textContent = `${item.salesMix.toFixed(1)}%`;
+    const stdEl = document.getElementById('meStd_' + item.id);
+    if (stdEl) stdEl.textContent = `(std ${popBenchmark.toFixed(0)}%)`;
+    const profEl = document.getElementById('meProfit_' + item.id);
+    if (profEl) profEl.textContent = formatRp(item.totalProfit);
+    const hintEl = document.getElementById('meHint_' + item.id);
+    if (hintEl) hintEl.textContent = `💡 ${item.actionHint}`;
+  });
 }
 
-async function saveMenuSalesToSheets() {
-  const salesMap = getSavedMenuSalesMap();
+function scheduleMenuEngAutoSave() {
+  const statusEl = document.getElementById('meAutoSaveStatus');
+  if (statusEl) {
+    statusEl.textContent = '↻ Menyimpan otomatis...';
+    statusEl.className = 'text-[10px] font-bold text-amber-700';
+  }
+  clearTimeout(window._meAutoSaveTimer);
+  window._meAutoSaveTimer = setTimeout(async () => {
+    await saveMenuSalesToSheets(true);
+    const sEl = document.getElementById('meAutoSaveStatus');
+    if (sEl) {
+      sEl.textContent = `✓ Tersimpan otomatis (${getMenuEngPeriodLabel()})`;
+      sEl.className = 'text-[10px] font-bold text-emerald-700';
+    }
+  }, 1200);
+}
+
+function onMenuSalesInput(recipeId, val) {
+  setSavedMenuSales(recipeId, val === '' ? 0 : (Number(val) || 0), getMenuEngPeriodKey());
+  updateMenuEngLiveMetrics();
+  scheduleMenuEngAutoSave();
+}
+
+async function saveMenuSalesToSheets(silent = false) {
+  const pKey = getMenuEngPeriodKey();
+  const salesMap = getSavedMenuSalesMap(pKey);
   const updatedRecipes = STATE.recipes.map((r, idx) => {
     const id = String(r.id || r.ID || ('rcp_' + idx));
     const qty = salesMap[id] !== undefined ? salesMap[id] : (Number(r.salesQty) || 0);
-    return { ...r, salesQty: qty };
+    const salesByMonth = { ...(r.salesByMonth || {}), [pKey]: qty };
+    return { ...r, salesQty: qty, salesByMonth };
   });
-  await postToBackend({ action: 'saveRecipes', recipes: updatedRecipes }, 'Data penjualan Menu Engineering tersimpan!');
+  await postToBackend(
+    { action: 'saveRecipes', recipes: updatedRecipes },
+    silent ? '' : `Data penjualan Menu Eng (${getMenuEngPeriodLabel()}) tersimpan!`,
+    silent
+  );
 }
 
 function renderMenuEngPage(main) {
-  const { items, totalUnits, totalProfitAll, totalRevenueAll, avgCm, popBenchmark } = getMenuEngineeringAnalysis();
+  const { items, totalUnits, totalProfitAll, avgCm, popBenchmark } = getMenuEngineeringAnalysis();
   const counts = {
     STAR: items.filter(x => x.quadrant === 'STAR').length,
     PLOWHORSE: items.filter(x => x.quadrant === 'PLOWHORSE').length,
@@ -107,6 +215,7 @@ function renderMenuEngPage(main) {
     DOG: items.filter(x => x.quadrant === 'DOG').length
   };
   const visibleItems = items.filter(x => STATE.menuEngQuad === 'ALL' || x.quadrant === STATE.menuEngQuad);
+  const periodLabel = getMenuEngPeriodLabel();
 
   main.innerHTML = `
     <div class="grid grid-cols-3 gap-1 p-1 bg-stone-200 rounded-xl mb-3">
@@ -128,11 +237,33 @@ function renderMenuEngPage(main) {
       <div class="flex items-center justify-between gap-2">
         <div>
           <h2 class="text-sm font-bold text-stone-900">📈 Menu Engineering Matrix</h2>
-          <p class="text-[11px] text-stone-500">Isi jumlah terjual (cup) untuk pemetaan kuadran otomatis</p>
+          <p class="text-[11px] text-stone-500">Periode: <b>${periodLabel}</b> • Simpan otomatis aktif</p>
         </div>
         <button onclick="downloadMenuEngPdf()" class="px-3 py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold shrink-0 active:scale-95">
-          📄 PDF
+          📄 PDF (${STATE.menuEngMonth}/${STATE.menuEngYear})
         </button>
+      </div>
+
+      <!-- Pemilih Bulan & Tahun -->
+      <div class="grid grid-cols-2 gap-2">
+        <select onchange="setMenuEngPeriod(this.value, '${STATE.menuEngYear}')"
+          class="px-2.5 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
+          ${MENU_ENG_MONTH_NAMES.map((lbl, idx) => {
+            const val = String(idx + 1).padStart(2, '0');
+            return `<option value="${val}" ${val === STATE.menuEngMonth ? 'selected' : ''}>Bulan: ${lbl}</option>`;
+          }).join('')}
+        </select>
+        <select onchange="setMenuEngPeriod('${STATE.menuEngMonth}', this.value)"
+          class="px-2.5 py-2 rounded-xl border border-stone-300 bg-stone-50 text-xs font-bold">
+          ${[2025, 2026, 2027, 2028].map(yr =>
+            `<option value="${yr}" ${String(yr) === STATE.menuEngYear ? 'selected' : ''}>Tahun: ${yr}</option>`
+          ).join('')}
+        </select>
+      </div>
+
+      <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-emerald-50/70 border border-emerald-200">
+        <span id="meAutoSaveStatus" class="text-[10px] font-bold text-emerald-700">✓ Tersimpan otomatis (${periodLabel})</span>
+        <button onclick="saveMenuSalesToSheets(false)" class="text-[10px] font-bold text-amber-800 underline">Sync Sekarang</button>
       </div>
 
       <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
@@ -147,15 +278,15 @@ function renderMenuEngPage(main) {
       <div class="grid grid-cols-3 gap-2 pt-1 text-[11px]">
         <div class="p-2 rounded-xl bg-stone-50 border border-stone-200">
           <span class="text-[10px] text-stone-400 block">Total Terjual</span>
-          <b>${formatNum(totalUnits)} cup</b>
+          <b id="meTotalUnits">${formatNum(totalUnits)} cup</b>
         </div>
         <div class="p-2 rounded-xl bg-stone-50 border border-stone-200">
           <span class="text-[10px] text-stone-400 block">Rata-rata Margin</span>
-          <b class="text-emerald-700">${formatRp(avgCm)}</b>
+          <b id="meAvgCm" class="text-emerald-700">${formatRp(avgCm)}</b>
         </div>
         <div class="p-2 rounded-xl bg-stone-50 border border-stone-200">
           <span class="text-[10px] text-stone-400 block">Total Profit</span>
-          <b class="text-amber-800">${formatRp(totalProfitAll)}</b>
+          <b id="meTotalProfit" class="text-amber-800">${formatRp(totalProfitAll)}</b>
         </div>
       </div>
     </section>
@@ -164,22 +295,22 @@ function renderMenuEngPage(main) {
     <div class="grid grid-cols-4 gap-1.5 mb-3 text-center">
       <button onclick="STATE.menuEngQuad = STATE.menuEngQuad === 'STAR' ? 'ALL' : 'STAR'; renderCurrentTab();"
         class="p-2 rounded-xl border ${STATE.menuEngQuad === 'STAR' ? 'bg-emerald-600 text-white border-emerald-700' : 'bg-white border-emerald-200 text-emerald-900'}">
-        <div class="text-xs font-extrabold">⭐ ${counts.STAR}</div>
+        <div class="text-xs font-extrabold">⭐ <span id="meCount_STAR">${counts.STAR}</span></div>
         <div class="text-[10px] font-bold">Star</div>
       </button>
       <button onclick="STATE.menuEngQuad = STATE.menuEngQuad === 'PLOWHORSE' ? 'ALL' : 'PLOWHORSE'; renderCurrentTab();"
         class="p-2 rounded-xl border ${STATE.menuEngQuad === 'PLOWHORSE' ? 'bg-amber-600 text-white border-amber-700' : 'bg-white border-amber-200 text-amber-900'}">
-        <div class="text-xs font-extrabold">🐎 ${counts.PLOWHORSE}</div>
+        <div class="text-xs font-extrabold">🐎 <span id="meCount_PLOWHORSE">${counts.PLOWHORSE}</span></div>
         <div class="text-[10px] font-bold">Plowhorse</div>
       </button>
       <button onclick="STATE.menuEngQuad = STATE.menuEngQuad === 'PUZZLE' ? 'ALL' : 'PUZZLE'; renderCurrentTab();"
         class="p-2 rounded-xl border ${STATE.menuEngQuad === 'PUZZLE' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-white border-indigo-200 text-indigo-900'}">
-        <div class="text-xs font-extrabold">🧩 ${counts.PUZZLE}</div>
+        <div class="text-xs font-extrabold">🧩 <span id="meCount_PUZZLE">${counts.PUZZLE}</span></div>
         <div class="text-[10px] font-bold">Puzzle</div>
       </button>
       <button onclick="STATE.menuEngQuad = STATE.menuEngQuad === 'DOG' ? 'ALL' : 'DOG'; renderCurrentTab();"
         class="p-2 rounded-xl border ${STATE.menuEngQuad === 'DOG' ? 'bg-rose-600 text-white border-rose-700' : 'bg-white border-rose-200 text-rose-900'}">
-        <div class="text-xs font-extrabold">🐕 ${counts.DOG}</div>
+        <div class="text-xs font-extrabold">🐕 <span id="meCount_DOG">${counts.DOG}</span></div>
         <div class="text-[10px] font-bold">Dog</div>
       </button>
     </div>
@@ -198,7 +329,7 @@ function renderMenuEngPage(main) {
             <div class="flex items-start justify-between gap-2">
               <div>
                 <div class="flex items-center gap-1.5">
-                  <span class="text-[10px] px-2 py-0.5 rounded-full border font-bold ${item.badgeClass}">${item.badge}</span>
+                  <span id="meBadge_${escHtml(item.id)}" class="text-[10px] px-2 py-0.5 rounded-full border font-bold ${item.badgeClass}">${item.badge}</span>
                   <span class="text-[10px] text-stone-400 font-semibold">${escHtml(item.category)}</span>
                 </div>
                 <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(item.name)}</h3>
@@ -206,8 +337,8 @@ function renderMenuEngPage(main) {
               <div class="w-24 shrink-0">
                 <label class="block text-[9px] font-bold text-stone-400 uppercase text-right">Terjual (Cup)</label>
                 <input type="number" value="${item.salesQty || ''}" placeholder="0"
-                  onchange="onMenuSalesInput('${escHtml(item.id)}', this.value)"
-                  class="w-full px-2 py-1 rounded-lg border border-amber-400 bg-amber-50/50 text-xs font-extrabold text-right" />
+                  oninput="onMenuSalesInput('${escHtml(item.id)}', this.value)"
+                  class="w-full px-2 py-1 rounded-lg border border-amber-400 bg-amber-50/50 text-xs font-extrabold text-right focus:outline-none focus:border-amber-600" />
               </div>
             </div>
 
@@ -218,23 +349,23 @@ function renderMenuEngPage(main) {
               </div>
               <div>
                 <span class="text-stone-400 block text-[10px]">Sales Mix</span>
-                <b>${item.salesMix.toFixed(1)}%</b> <span class="text-[9px] text-stone-400">(std ${popBenchmark.toFixed(0)}%)</span>
+                <b id="meMix_${escHtml(item.id)}">${item.salesMix.toFixed(1)}%</b> <span id="meStd_${escHtml(item.id)}" class="text-[9px] text-stone-400">(std ${popBenchmark.toFixed(0)}%)</span>
               </div>
               <div>
                 <span class="text-stone-400 block text-[10px]">Total Profit</span>
-                <b class="text-stone-900">${formatRp(item.totalProfit)}</b>
+                <b id="meProfit_${escHtml(item.id)}" class="text-stone-900">${formatRp(item.totalProfit)}</b>
               </div>
             </div>
 
-            <p class="mt-2 text-[10px] text-stone-600 bg-stone-50 px-2.5 py-1.5 rounded-lg">
+            <p id="meHint_${escHtml(item.id)}" class="mt-2 text-[10px] text-stone-600 bg-stone-50 px-2.5 py-1.5 rounded-lg">
               💡 ${item.actionHint}
             </p>
           </div>
         `).join('')}
       </section>
 
-      <button onclick="saveMenuSalesToSheets()" class="w-full py-3 rounded-2xl bg-stone-900 text-white font-bold text-xs shadow-md active:scale-95">
-        💾 Simpan Data Penjualan Menu Engineering
+      <button onclick="saveMenuSalesToSheets(false)" class="w-full py-3 rounded-2xl bg-stone-900 text-white font-bold text-xs shadow-md active:scale-95">
+        💾 Simpan &amp; Sinkronkan Periode ${periodLabel}
       </button>
     `}
   `;
@@ -243,14 +374,16 @@ function renderMenuEngPage(main) {
 function downloadMenuEngPdf() {
   const doc = typeof createPdfDoc === 'function' ? createPdfDoc('l') : null;
   if (!doc) return;
+  const periodLabel = getMenuEngPeriodLabel();
+  const periodKey = getMenuEngPeriodKey();
   const { items, totalUnits, totalProfitAll, totalRevenueAll, avgCm, popBenchmark } = getMenuEngineeringAnalysis();
 
   doc.setFontSize(13);
   doc.setFont(undefined, 'bold');
-  doc.text('QOSE COFFEE — LAPORAN MENU ENGINEERING MATRIX', 12, 14);
+  doc.text(`QOSE COFFEE — LAPORAN MENU ENGINEERING MATRIX (${periodLabel.toUpperCase()})`, 12, 14);
   doc.setFontSize(8.5);
   doc.setFont(undefined, 'normal');
-  doc.text(`Total Terjual: ${formatNum(totalUnits)} cup  |  Total Omzet: ${formatRp(totalRevenueAll)}  |  Total Profit: ${formatRp(totalProfitAll)}  |  Std Margin: ${formatRp(avgCm)}  |  Std Popularitas: ${popBenchmark.toFixed(1)}%`, 12, 20);
+  doc.text(`Periode: ${periodLabel}  |  Total Terjual: ${formatNum(totalUnits)} cup  |  Total Omzet: ${formatRp(totalRevenueAll)}  |  Total Profit: ${formatRp(totalProfitAll)}  |  Std Margin: ${formatRp(avgCm)}  |  Std Popularitas: ${popBenchmark.toFixed(1)}%`, 12, 20);
 
   const body = items.map((it, idx) => [
     idx + 1,
@@ -285,8 +418,8 @@ function downloadMenuEngPdf() {
     }
   });
 
-  doc.save(`Menu-Engineering-Qose-${new Date().toISOString().slice(0, 10)}.pdf`);
-  showToast('PDF Menu Engineering berhasil diunduh');
+  doc.save(`Menu-Engineering-Qose-${periodKey}.pdf`);
+  showToast(`PDF Menu Engineering (${periodLabel}) berhasil diunduh`);
 }
 
 // Hook cleanly into existing Master & HPP tab
