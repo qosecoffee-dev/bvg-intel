@@ -13,7 +13,7 @@ function setPoDateParts(year, month, day) {
 function quickOrderFromAlert(ingId) {
   STATE.activeTab = 'po';
   STATE.poSubTab = 'po';
-  STATE.poDate = new Date().toISOString().slice(0, 10);
+  STATE.poDate = getLocalTodayStr();
   renderCurrentTab();
   setTimeout(() => openPurchaseOrderModal(null, ingId), 80);
 }
@@ -36,7 +36,8 @@ function buildPoListHtml() {
     return !q ||
       String(po.ingName || '').toLowerCase().includes(q) ||
       String(po.subCategory || '').toLowerCase().includes(q) ||
-      String(po.notes || '').toLowerCase().includes(q);
+      String(po.notes || '').toLowerCase().includes(q) ||
+      String(po.picName || '').toLowerCase().includes(q);
   });
 
   if (filteredOrders.length === 0) {
@@ -55,10 +56,13 @@ function buildPoListHtml() {
     <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
       <div class="flex items-start justify-between gap-2">
         <div>
-          <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(po.subCategory || 'Bahan Bar')}</span>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(po.subCategory || 'Bahan Bar')}</span>
+            ${po.picName ? `<span class="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 font-semibold">👤 ${escHtml(po.picName)}</span>` : ''}
+          </div>
           <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(po.ingName)}</h3>
         </div>
-        <div class="flex gap-1">
+        <div class="flex gap-1 shrink-0">
           <button onclick='openPurchaseOrderModal(${JSON.stringify(po).replace(/'/g, "&#39;")})' class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
           <button onclick="deletePoAction('${escHtml(po.poId)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
         </div>
@@ -156,7 +160,7 @@ function renderPoVendorTab(main) {
         <div class="flex items-center justify-between gap-2">
           <div>
             <h2 class="text-sm font-bold text-stone-900">Purchasing Order Bar</h2>
-            <p class="text-[11px] text-stone-500">Order tersimpan otomatis sesuai tanggal pengajuan</p>
+            <p class="text-[11px] text-stone-500">Order tercatat dengan verifikasi PIC &amp; PIN</p>
           </div>
           <button onclick="openPurchaseOrderModal()" class="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 active:scale-95">
             + Order Bahan Baku Bar
@@ -181,11 +185,10 @@ function renderPoVendorTab(main) {
           </select>
         </div>
 
-        <!-- Pencarian Cepat Daftar PO Harian -->
         <div class="relative flex items-center">
           <input id="poSearchInput" type="text" value="${escHtml(STATE.poSearch)}"
             oninput="STATE.poSearch=this.value; updatePoListOnly();"
-            placeholder="Cari nama bahan, kategori, atau keterangan PO..."
+            placeholder="Cari nama bahan, kategori, PIC, atau keterangan PO..."
             class="w-full pl-3 pr-8 py-2 rounded-xl border border-stone-300 bg-stone-50 focus:bg-white text-xs focus:border-amber-600 focus:outline-none" />
           <button type="button" onclick="STATE.poSearch=''; const el=document.getElementById('poSearchInput'); if(el) el.value=''; updatePoListOnly();"
             class="absolute right-2.5 text-stone-400 hover:text-stone-700 text-xs font-bold">✕</button>
@@ -273,6 +276,9 @@ function openPurchaseOrderModal(editPo = null, preselectIngId = null) {
         <textarea id="poNotes" rows="2" placeholder="Catatan kemasan, merk, atau urgensi..."
           class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs">${escHtml(editPo ? (editPo.notes || '') : '')}</textarea>
       </div>
+
+      ${renderPicPinBoxHtml('poAuth', 'PIC Pengaju Purchasing Order')}
+
       <button onclick="submitPurchaseOrderForm('${editPo ? escHtml(editPo.poId) : ''}')"
         class="w-full py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs active:scale-95">
         💾 Save Order (${STATE.poDate})
@@ -293,10 +299,16 @@ async function submitPurchaseOrderForm(editPoId) {
     showToast('Pilih bahan dari pencarian dan isi jumlah order > 0');
     return;
   }
+
+  const auth = getPicPinValues('poAuth');
+  if (!auth) return;
+
   closeModal();
 
   await postToBackend({
     action: 'savePurchaseOrder',
+    picName: auth.picName,
+    pin: auth.pin,
     order: {
       poId: editPoId || ('po_' + Date.now()),
       poDate: STATE.poDate,
@@ -309,7 +321,7 @@ async function submitPurchaseOrderForm(editPoId) {
       neededDate,
       notes
     }
-  }, `Order ${ing.name} tersimpan!`);
+  }, `Order ${ing.name} disimpan oleh ${auth.picName}!`);
 }
 
 async function deletePoAction(poId) {
@@ -399,16 +411,21 @@ function downloadDailyPdf() {
   const dateStr = STATE.selectedDate;
   const sorted = getSortedIngredients();
 
+  const dayLogs = STATE.invDaily.filter(r => String(r.date) === dateStr && r.picName);
+  const lastPic = dayLogs.length > 0
+    ? [...dayLogs].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0].picName
+    : '-';
+
   doc.setFontSize(13);
   doc.setFont(undefined, 'bold');
   doc.text('QOSE COFFEE — DAILY INVENTORY BAR', 14, 15);
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont(undefined, 'normal');
-  doc.text(`Tanggal Laporan: ${dateStr}   |   Rumus: CL = IN - OUT`, 14, 21);
+  doc.text(`Tanggal: ${dateStr}   |   Rumus: CL = IN - OUT - WASTE   |   PIC Terakhir: ${lastPic}`, 14, 21);
 
   const body = sorted.map((ing, idx) => {
     const rec = getDailyRecord(dateStr, ing.id);
-    const cl = rec.inQty - rec.outQty;
+    const cl = rec.inQty - rec.outQty - rec.wasteQty;
     return [
       idx + 1,
       ing.name,
@@ -416,25 +433,29 @@ function downloadDailyPdf() {
       ing.unit,
       formatNum(rec.inQty),
       formatNum(rec.outQty),
-      formatNum(cl)
+      formatNum(rec.wasteQty),
+      formatNum(cl),
+      rec.picName || '-'
     ];
   });
 
   doc.autoTable({
     startY: 25,
-    head: [['No', 'Nama Bahan', 'Sub Kategori', 'Satuan', 'IN', 'OUT', 'CL']],
+    head: [['No', 'Nama Bahan', 'Kategori', 'Sat', 'IN', 'OUT', 'Waste', 'CL', 'PIC']],
     body,
-    styles: { fontSize: 7.5, cellPadding: 1.8, lineColor: [220, 220, 220], lineWidth: 0.1 },
+    styles: { fontSize: 7.2, cellPadding: 1.6, lineColor: [220, 220, 220], lineWidth: 0.1 },
     headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [250, 250, 249] },
     columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },
-      1: { cellWidth: 58 },
-      2: { cellWidth: 34 },
-      3: { cellWidth: 18, halign: 'center' },
-      4: { cellWidth: 20, halign: 'right' },
-      5: { cellWidth: 20, halign: 'right' },
-      6: { cellWidth: 22, halign: 'right', fontStyle: 'bold' }
+      0: { cellWidth: 9, halign: 'center' },
+      1: { cellWidth: 48 },
+      2: { cellWidth: 26 },
+      3: { cellWidth: 13, halign: 'center' },
+      4: { cellWidth: 16, halign: 'right' },
+      5: { cellWidth: 16, halign: 'right' },
+      6: { cellWidth: 16, halign: 'right', textColor: [190, 18, 60] },
+      7: { cellWidth: 18, halign: 'right', fontStyle: 'bold' },
+      8: { cellWidth: 20, halign: 'center' }
     }
   });
 
@@ -450,33 +471,48 @@ function downloadMonthlyPdf() {
   const sorted = getSortedIngredients();
   const summaryMap = getMonthlySummaryMap(mKey);
 
+  const monthLogs = STATE.invMonthly.filter(m => String(m.monthKey) === mKey && m.picName);
+  const lastSoPic = monthLogs.length > 0
+    ? [...monthLogs].sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))[0].picName
+    : '-';
+
   const dayMap = {};
   STATE.invDaily.filter(r => String(r.monthKey) === mKey).forEach(r => {
+    const i = Number(r.inQty) || 0;
+    const o = Number(r.outQty) || 0;
+    const w = Number(r.wasteQty) || 0;
     dayMap[`${r.ingId}__${Number(r.day)}`] = {
-      i: Number(r.inQty) || 0,
-      o: Number(r.outQty) || 0,
-      c: Number(r.clQty) !== undefined ? Number(r.clQty) : ((Number(r.inQty) || 0) - (Number(r.outQty) || 0))
+      i, o, w, c: i - o - w
     };
   });
 
   let grandTotalValueSo = 0;
+  let grandTotalPemakaian = 0;
+  let grandTotalWasteRp = 0;
 
   doc.setFontSize(13);
   doc.setFont(undefined, 'bold');
-  doc.text(`QOSE COFFEE — REKAP BULANAN INVENTORY & STOCK OPNAME (${mKey})`, 10, 13);
+  doc.text(`QOSE COFFEE — REKAP BULANAN INVENTORY, WASTE & STOCK OPNAME (${mKey})`, 10, 13);
   doc.setFontSize(8.5);
   doc.setFont(undefined, 'normal');
-  doc.text('Bagian 1: Rekap Total IN / OUT / CL, Stock Opname (SO), Selisih, Pemakaian Bar (Rp) & Valuasi Stok Fisik', 10, 18.5);
+  doc.text(`Bagian 1: Rekap IN / OUT / Waste / CL, Stock Opname (SO), Pemakaian Bar & Waste (Rp)   |   PIC SO Terakhir: ${lastSoPic}`, 10, 18.5);
 
   const summaryBody = sorted.map((ing, idx) => {
-    const s = summaryMap[ing.id] || { totalIn: 0, totalOut: 0, totalCl: 0, soQty: '', selisih: 0, pemakaianBar: 0, valueSo: 0 };
+    const s = summaryMap[ing.id] || {
+      totalIn: 0, totalOut: 0, totalWaste: 0, totalCl: 0,
+      soQty: '', selisih: 0, pemakaianBar: 0, wasteCost: 0, valueSo: 0
+    };
     const draft = STATE.draftMonthly[mKey + '__' + ing.id] || {};
     const soVal = draft.soQty !== undefined ? draft.soQty : s.soQty;
     const hasSo = soVal !== '' && soVal !== null && soVal !== undefined;
     const selisih = hasSo ? (Number(soVal) - Number(s.totalCl || 0)) : 0;
-    const valSo = hasSo ? (Number(soVal) * (Number(ing.unitCost) || 0)) : 0;
+    const valSo = hasSo ? (Number(soVal) * getIngUnitCost(ing)) : 0;
     const pemakaianBarRp = Number(s.pemakaianBar) || 0;
+    const wasteRp = Number(s.wasteCost) || 0;
+
     grandTotalValueSo += valSo;
+    grandTotalPemakaian += pemakaianBarRp;
+    grandTotalWasteRp += wasteRp;
 
     return [
       idx + 1,
@@ -485,10 +521,12 @@ function downloadMonthlyPdf() {
       ing.unit,
       formatNum(s.totalIn),
       formatNum(s.totalOut),
+      formatNum(s.totalWaste),
       formatNum(s.totalCl),
       hasSo ? formatNum(soVal) : '-',
       hasSo ? formatNum(selisih) : '-',
       formatRp(pemakaianBarRp),
+      formatRp(wasteRp),
       formatRp(valSo)
     ];
   });
@@ -497,48 +535,53 @@ function downloadMonthlyPdf() {
   const acuanRowIdx = summaryBody.length + 1;
   const isOverLimit = grandTotalValueSo > 20000000;
 
-  // Hanya muncul SATU KALI di baris paling akhir halaman terakhir
   summaryBody.push([
     '',
-    'TOTAL NILAI RUPIAH STOCK FISIK (VALUE SO)',
+    'TOTAL PEMAKAIAN, WASTE & NILAI STOK FISIK (SO)',
     '', '', '', '', '', '', '', '',
+    formatRp(grandTotalPemakaian),
+    formatRp(grandTotalWasteRp),
     formatRp(grandTotalValueSo)
   ]);
   summaryBody.push([
     '',
     'ACUAN / BATAS MAKSIMAL STOK FISIK',
-    '', '', '', '', '', '', '', '',
+    '', '', '', '', '', '', '', '', '', '',
     'Rp 20.000.000'
   ]);
 
   doc.autoTable({
     startY: 22,
     margin: { left: 10, right: 10 },
-    head: [['No', 'Nama Bahan', 'Sub Kategori', 'Satuan', 'Total IN', 'Total OUT', 'Total CL', 'SO', 'Selisih', 'Data Pemakaian Bar', 'Data Value SO']],
+    head: [['No', 'Nama Bahan', 'Kategori', 'Sat', 'Tot IN', 'Tot OUT', 'Tot Waste', 'Tot CL', 'SO', 'Selisih', 'Pemakaian Bar', 'Waste (Rp)', 'Value SO']],
     body: summaryBody,
-    styles: { fontSize: 7, cellPadding: 1.5, lineColor: [210, 210, 210], lineWidth: 0.1 },
+    styles: { fontSize: 6.6, cellPadding: 1.4, lineColor: [210, 210, 210], lineWidth: 0.1 },
     headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [250, 250, 249] },
     columnStyles: {
-      0: { cellWidth: 9, halign: 'center' },
-      1: { cellWidth: 55 },
-      2: { cellWidth: 30 },
-      3: { cellWidth: 15, halign: 'center' },
+      0: { cellWidth: 8, halign: 'center' },
+      1: { cellWidth: 46 },
+      2: { cellWidth: 25 },
+      3: { cellWidth: 13, halign: 'center' },
       4: { halign: 'right' },
       5: { halign: 'right' },
-      6: { halign: 'right', fontStyle: 'bold' },
-      7: { halign: 'right' },
+      6: { halign: 'right', textColor: [190, 18, 60] },
+      7: { halign: 'right', fontStyle: 'bold' },
       8: { halign: 'right' },
       9: { halign: 'right' },
-      10: { halign: 'right', fontStyle: 'bold' }
+      10: { halign: 'right' },
+      11: { halign: 'right', textColor: [190, 18, 60] },
+      12: { halign: 'right', fontStyle: 'bold' }
     },
     didParseCell: data => {
       if (data.section === 'body' && data.row.index === totalRowIdx) {
         data.cell.styles.fillColor = [254, 243, 199];
         data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fontSize = 8;
-        if (data.column.index === 10) {
+        data.cell.styles.fontSize = 7.4;
+        if (data.column.index === 12) {
           data.cell.styles.textColor = isOverLimit ? [220, 38, 38] : [5, 150, 105];
+        } else if (data.column.index === 11) {
+          data.cell.styles.textColor = [190, 18, 60];
         } else {
           data.cell.styles.textColor = [120, 53, 15];
         }
@@ -546,13 +589,13 @@ function downloadMonthlyPdf() {
       if (data.section === 'body' && data.row.index === acuanRowIdx) {
         data.cell.styles.fillColor = [245, 245, 244];
         data.cell.styles.fontStyle = 'bold';
-        data.cell.styles.fontSize = 7.5;
+        data.cell.styles.fontSize = 7.2;
         data.cell.styles.textColor = [68, 64, 60];
       }
     }
   });
 
-  // Rincian Harian Tanggal 1 - 31
+  // Rincian Harian Tanggal 1 - 31 (IN / OUT / WST / CL)
   const dayRanges = [
     { start: 1, end: 11, label: 'Tanggal 1 – 11' },
     { start: 12, end: 21, label: 'Tanggal 12 – 21' },
@@ -563,21 +606,22 @@ function downloadMonthlyPdf() {
     doc.addPage('a4', 'l');
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.text(`QOSE COFFEE — RINCIAN HARIAN IN / OUT / CL (${mKey} • ${range.label})`, 10, 12);
+    doc.text(`QOSE COFFEE — RINCIAN HARIAN IN / OUT / WASTE / CL (${mKey} • ${range.label})`, 10, 12);
 
     const headRow1 = [
       { content: 'No', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
       { content: 'Nama Bahan', rowSpan: 2, styles: { valign: 'middle' } },
-      { content: 'Sub Kategori', rowSpan: 2, styles: { valign: 'middle' } }
+      { content: 'Kategori', rowSpan: 2, styles: { valign: 'middle' } }
     ];
     const headRow2 = [];
 
     for (let d = range.start; d <= range.end; d++) {
-      headRow1.push({ content: `Tgl ${d}`, colSpan: 3, styles: { halign: 'center', fillColor: d % 2 === 0 ? [55, 48, 45] : [28, 25, 23] } });
+      headRow1.push({ content: `Tgl ${d}`, colSpan: 4, styles: { halign: 'center', fillColor: d % 2 === 0 ? [55, 48, 45] : [28, 25, 23] } });
       headRow2.push(
-        { content: 'IN', styles: { halign: 'center', fontSize: 5.5 } },
-        { content: 'OUT', styles: { halign: 'center', fontSize: 5.5 } },
-        { content: 'CL', styles: { halign: 'center', fontSize: 5.5 } }
+        { content: 'IN', styles: { halign: 'center', fontSize: 5 } },
+        { content: 'OUT', styles: { halign: 'center', fontSize: 5 } },
+        { content: 'WST', styles: { halign: 'center', fontSize: 5 } },
+        { content: 'CL', styles: { halign: 'center', fontSize: 5 } }
       );
     }
 
@@ -585,10 +629,12 @@ function downloadMonthlyPdf() {
       const row = [idx + 1, ing.name, ing.subCategory];
       for (let d = range.start; d <= range.end; d++) {
         const cell = dayMap[`${ing.id}__${d}`];
+        const hasAny = cell && (cell.i || cell.o || cell.w);
         row.push(
           cell && cell.i ? formatNum(cell.i) : '-',
           cell && cell.o ? formatNum(cell.o) : '-',
-          cell && (cell.i || cell.o) ? formatNum(cell.c) : '-'
+          cell && cell.w ? formatNum(cell.w) : '-',
+          hasAny ? formatNum(cell.c) : '-'
         );
       }
       return row;
@@ -596,16 +642,16 @@ function downloadMonthlyPdf() {
 
     doc.autoTable({
       startY: 16,
-      margin: { left: 8, right: 8 },
+      margin: { left: 7, right: 7 },
       head: [headRow1, headRow2],
       body: rangeBody,
-      styles: { fontSize: 5.8, cellPadding: 0.9, lineColor: [215, 215, 215], lineWidth: 0.1, halign: 'right' },
-      headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold', fontSize: 6.2 },
+      styles: { fontSize: 5.2, cellPadding: 0.7, lineColor: [215, 215, 215], lineWidth: 0.1, halign: 'right' },
+      headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold', fontSize: 5.6 },
       alternateRowStyles: { fillColor: [250, 250, 249] },
       columnStyles: {
-        0: { cellWidth: 7, halign: 'center' },
-        1: { cellWidth: 42, halign: 'left', fontStyle: 'bold' },
-        2: { cellWidth: 24, halign: 'left' }
+        0: { cellWidth: 6.5, halign: 'center' },
+        1: { cellWidth: 36, halign: 'left', fontStyle: 'bold' },
+        2: { cellWidth: 20, halign: 'left' }
       }
     });
   });
@@ -630,7 +676,7 @@ function downloadSingleRecipeHppPdf(recipeId) {
   doc.text('QOSE COFFEE — KARTU COSTING & HPP (COGS) MENU', 14, 15);
   doc.setFontSize(9);
   doc.setFont(undefined, 'normal');
-  doc.text(`Dicetak: ${new Date().toISOString().slice(0, 10)}`, 14, 21);
+  doc.text(`Dicetak: ${getLocalTodayStr()}`, 14, 21);
 
   doc.setDrawColor(210, 210, 210);
   doc.setFillColor(250, 250, 249);
@@ -710,7 +756,7 @@ function downloadSingleRecipeSopPdf(recipeId) {
   doc.text('QOSE COFFEE — STANDARD OPERATING PROCEDURE (SOP) BAR', 14, 16);
   doc.setFontSize(9);
   doc.setFont(undefined, 'normal');
-  doc.text(`Panduan Takaran & Penyajian Minuman   |   Dicetak: ${new Date().toISOString().slice(0, 10)}`, 14, 22);
+  doc.text(`Panduan Takaran & Penyajian Minuman   |   Dicetak: ${getLocalTodayStr()}`, 14, 22);
 
   doc.setDrawColor(28, 25, 23);
   doc.setFillColor(245, 245, 244);
@@ -768,7 +814,7 @@ function downloadSingleRecipeSopPdf(recipeId) {
 function downloadParStockPdf() {
   const doc = createPdfDoc('p');
   if (!doc) return;
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = getLocalTodayStr().slice(0, 7);
   const mMap = getMonthlySummaryMap(curMonth);
   const sorted = getSortedIngredients();
 
@@ -777,7 +823,7 @@ function downloadParStockPdf() {
   doc.text('QOSE COFFEE — DAFTAR PAR STOCK & MINIMUM ORDER', 14, 15);
   doc.setFontSize(9);
   doc.setFont(undefined, 'normal');
-  doc.text(`Periode Stok: ${curMonth}   |   Tanggal Cetak: ${new Date().toISOString().slice(0, 10)}`, 14, 21);
+  doc.text(`Periode Stok: ${curMonth}   |   Tanggal Cetak: ${getLocalTodayStr()}`, 14, 21);
 
   const body = sorted.map((ing, idx) => {
     const cur = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
@@ -800,7 +846,7 @@ function downloadParStockPdf() {
     }
   });
 
-  doc.save(`Par-Stock-Qose-${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`Par-Stock-Qose-${getLocalTodayStr()}.pdf`);
   showToast('PDF Par Stock berhasil diunduh');
 }
 
@@ -808,13 +854,14 @@ function downloadPoPdf() {
   const doc = createPdfDoc('p');
   if (!doc) return;
   const dailyOrders = STATE.purchaseOrders.filter(o => String(o.poDate) === STATE.poDate);
+  const lastPic = dailyOrders.length > 0 ? (dailyOrders[dailyOrders.length - 1].picName || '-') : '-';
 
   doc.setFontSize(13);
   doc.setFont(undefined, 'bold');
   doc.text('QOSE COFFEE — PURCHASING ORDER (PO) BAR', 14, 15);
   doc.setFontSize(9);
   doc.setFont(undefined, 'normal');
-  doc.text(`Tanggal Pengajuan PO: ${STATE.poDate}   |   Total Item: ${dailyOrders.length}`, 14, 21);
+  doc.text(`Tanggal Pengajuan PO: ${STATE.poDate}   |   Total Item: ${dailyOrders.length}   |   PIC: ${lastPic}`, 14, 21);
 
   const body = dailyOrders.map((po, idx) => [
     idx + 1,
@@ -824,20 +871,21 @@ function downloadPoPdf() {
     formatNum(po.sisaStock),
     formatNum(po.qtyOrder),
     po.neededDate || '-',
+    po.picName || '-',
     po.notes || '-'
   ]);
 
   doc.autoTable({
     startY: 26,
-    head: [['No', 'Nama Bahan Baku', 'Sub Kategori', 'Satuan', 'Sisa Stock', 'Jumlah Order', 'Tgl Dibutuhkan', 'Keterangan']],
-    body: body.length ? body : [['-', 'Tidak ada item order pada tanggal ini', '', '', '', '', '', '']],
-    styles: { fontSize: 7.5, cellPadding: 2 },
+    head: [['No', 'Nama Bahan Baku', 'Kategori', 'Sat', 'Sisa', 'Order', 'Tgl Butuh', 'PIC', 'Keterangan']],
+    body: body.length ? body : [['-', 'Tidak ada item order pada tanggal ini', '', '', '', '', '', '', '']],
+    styles: { fontSize: 7.2, cellPadding: 1.8 },
     headStyles: { fillColor: [180, 83, 9], textColor: 255, fontStyle: 'bold' }
   });
 
   const finalY = (doc.lastAutoTable?.finalY || 80) + 16;
   doc.setFontSize(8.5);
-  doc.text('Dibuat Oleh (Head Bar),', 20, finalY);
+  doc.text(`Dibuat Oleh (${lastPic}),`, 20, finalY);
   doc.text('Disetujui Oleh (SPV / Manajemen),', 130, finalY);
   doc.text('( ______________________ )', 18, finalY + 18);
   doc.text('( ______________________ )', 128, finalY + 18);
@@ -855,7 +903,7 @@ function downloadVendorPdf() {
   doc.text('QOSE COFFEE — VENDOR DIRECTORY BAHAN BAKU BAR', 14, 15);
   doc.setFontSize(9);
   doc.setFont(undefined, 'normal');
-  doc.text(`Total Bahan Terdaftar: ${STATE.vendors.length}   |   Dicetak: ${new Date().toISOString().slice(0, 10)}`, 14, 21);
+  doc.text(`Total Bahan Terdaftar: ${STATE.vendors.length}   |   Dicetak: ${getLocalTodayStr()}`, 14, 21);
 
   const body = STATE.vendors.map((v, idx) => [
     idx + 1,
@@ -874,6 +922,6 @@ function downloadVendorPdf() {
     headStyles: { fillColor: [28, 25, 23], textColor: 255, fontStyle: 'bold' }
   });
 
-  doc.save(`Vendor-Directory-Qose-${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`Vendor-Directory-Qose-${getLocalTodayStr()}.pdf`);
   showToast('PDF Vendor Directory berhasil diunduh');
 }
