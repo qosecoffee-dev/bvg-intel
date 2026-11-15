@@ -1,592 +1,912 @@
-const SUB_CATEGORIES = [
-  'Powder', 'Sirup', 'Mocktail', 'Mixtura', 'Milk', 'Beer',
-  'Beans', 'Artisan Tea', 'Cup', 'Other Topping', 'Other Base',
-  'Spice', 'Frozen Fruit', 'Frozen Fruit Prep', 'Ice Cream',
-  'Tier 1', 'Tier 2', 'Preparation'
-];
+// ==================== CORE STATE & CONFIG ====================
+const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwfTS8e89ttxIhv9ZmJ9zqm000IMTs1mzB_cTLIPO6L68WaotWHQQScmPJsUGgjqWo/exec';
 
-const _nowInit = new Date();
+function getLocalTodayStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 const STATE = {
-  apiUrl: '',
+  gasUrl: localStorage.getItem('qose_gas_url') || DEFAULT_GAS_URL,
   activeTab: 'home',
-  poSubTab: 'po',
   masterSubTab: 'ingredients',
-  selectedDate: _nowInit.toISOString().slice(0, 10),
-  parSearch: '',
-  dailySearch: '',
-  dailyCatFilter: 'ALL',
-  masterSearch: '',
-  masterEditMode: false,
+  poSubTab: 'po',
+  selectedDate: getLocalTodayStr(),
+  poDate: getLocalTodayStr(),
+  poSearch: '',
+  vendorSearch: '',
+  ingSearch: '',
+  ingCatFilter: 'ALL',
   recipeSearch: '',
   recipeCatFilter: 'ALL',
-  poDate: _nowInit.toISOString().slice(0, 10),
-  vendorSearch: '',
-  menuEngMonth: String(_nowInit.getMonth() + 1).padStart(2, '0'),
-  menuEngYear: String(_nowInit.getFullYear()),
+  dailySearch: '',
+  dailyCatFilter: 'ALL',
+  monthlySearch: '',
+  monthlyCatFilter: 'ALL',
+  menuEngMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
+  menuEngYear: String(new Date().getFullYear()),
+  menuEngCat: 'ALL',
+  menuEngQuad: 'ALL',
+  selectedPic: localStorage.getItem('qose_last_pic') || '',
   ingredients: [],
   recipes: [],
   invDaily: [],
   invMonthly: [],
   purchaseOrders: [],
   vendors: [],
+  teamBar: [],
   draftDaily: {},
   draftMonthly: {},
-  draftPar: {},
-  isSyncing: false,
-  lastSyncInfo: null
+  isLoading: false
 };
 
-function detectSavedApiUrl() {
-  const direct = localStorage.getItem('bvg_intel_api_url');
-  if (direct && direct.startsWith('https://script.google.com/')) return direct;
-  for (let i = 0; i < localStorage.length; i++) {
-    const val = localStorage.getItem(localStorage.key(i)) || '';
-    if (val.startsWith('https://script.google.com/macros/s/')) {
-      localStorage.setItem('bvg_intel_api_url', val);
-      return val;
-    }
-  }
-  return '';
+window._acCallbacks = window._acCallbacks || {};
+
+const SUB_CATEGORIES = [
+  'Coffee Beans',
+  'Milk & Dairy',
+  'Syrup & Sauce',
+  'Powder & Matcha',
+  'Tea & Herbs',
+  'Fruit & Puree',
+  'Packaging & Cup',
+  'Other Base'
+];
+
+// ==================== FORMATTERS & HELPERS ====================
+function escHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-function loadLastSyncInfo() {
-  try {
-    const raw = JSON.parse(localStorage.getItem('bvg_intel_last_sync') || 'null');
-    if (raw && raw.timestamp) STATE.lastSyncInfo = raw;
-  } catch (e) {}
+function formatNum(val) {
+  const n = Number(val);
+  if (isNaN(n)) return '0';
+  return n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
 }
 
-function recordSyncInfo(success) {
-  STATE.lastSyncInfo = {
-    success: !!success,
-    timestamp: new Date().toISOString()
-  };
-  try {
-    localStorage.setItem('bvg_intel_last_sync', JSON.stringify(STATE.lastSyncInfo));
-  } catch (e) {}
-}
-
-function formatSyncTimestamp(isoStr) {
-  if (!isoStr) return '-';
-  const d = new Date(isoStr);
-  if (isNaN(d.getTime())) return '-';
-  const bulan = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-  const tgl = String(d.getDate()).padStart(2, '0');
-  const bln = bulan[d.getMonth()];
-  const thn = d.getFullYear();
-  const jam = String(d.getHours()).padStart(2, '0');
-  const mnt = String(d.getMinutes()).padStart(2, '0');
-  const dtk = String(d.getSeconds()).padStart(2, '0');
-  return `${tgl} ${bln} ${thn} • Pukul ${jam}:${mnt}:${dtk}`;
-}
-
-function formatRp(num) {
-  const n = Math.round(Number(num) || 0);
+function formatRp(val) {
+  const n = Math.round(Number(val) || 0);
   return 'Rp ' + n.toLocaleString('id-ID');
 }
 
-function formatNum(num) {
-  const n = Number(num) || 0;
-  return Number.isInteger(n) ? n.toLocaleString('id-ID') : n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
-}
-
-function escHtml(str) {
-  return String(str ?? '').replace(/[&<>"']/g, m => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[m]));
-}
-
-function showToast(msg) {
-  const el = document.getElementById('toastBox');
-  if (!el) return;
+function showToast(msg, duration = 2600) {
+  let el = document.getElementById('globalToast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'globalToast';
+    el.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-[999] px-4 py-2.5 rounded-2xl bg-stone-900 text-white text-xs font-bold shadow-lg transition-opacity duration-200 pointer-events-none max-w-[90vw] text-center';
+    document.body.appendChild(el);
+  }
   el.textContent = msg;
-  el.classList.remove('hidden');
+  el.style.opacity = '1';
   clearTimeout(window._toastTimer);
-  window._toastTimer = setTimeout(() => el.classList.add('hidden'), 2600);
+  window._toastTimer = setTimeout(() => {
+    el.style.opacity = '0';
+  }, duration);
 }
 
 function openModal(title, bodyHtml) {
-  document.getElementById('modalTitle').textContent = title;
-  document.getElementById('modalBody').innerHTML = bodyHtml;
-  const ov = document.getElementById('modalOverlay');
-  ov.classList.remove('hidden');
-  ov.classList.add('flex');
+  closeModal();
+  const wrap = document.createElement('div');
+  wrap.id = 'globalModal';
+  wrap.className = 'fixed inset-0 z-[900] bg-black/50 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-3';
+  wrap.innerHTML = `
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-stone-200 overflow-hidden max-h-[88vh] flex flex-col">
+      <div class="px-4 py-3.5 border-b border-stone-200 flex items-center justify-between bg-stone-50">
+        <h3 class="text-sm font-extrabold text-stone-900">${escHtml(title)}</h3>
+        <button type="button" onclick="closeModal()" class="w-8 h-8 rounded-full bg-stone-200 text-stone-700 font-bold text-xs flex items-center justify-center">✕</button>
+      </div>
+      <div class="p-4 overflow-y-auto space-y-3">
+        ${bodyHtml}
+      </div>
+    </div>
+  `;
+  wrap.addEventListener('click', (e) => {
+    if (e.target === wrap) closeModal();
+  });
+  document.body.appendChild(wrap);
 }
 
 function closeModal() {
-  const ov = document.getElementById('modalOverlay');
-  ov.classList.add('hidden');
-  ov.classList.remove('flex');
+  const existing = document.getElementById('globalModal');
+  if (existing) existing.remove();
 }
 
-function normalizeIngredient(raw, idx) {
-  const id = String(raw.id || raw.ID || ('ing_' + idx));
-  const name = String(raw.name || raw['Nama Bahan'] || '').trim();
-  const subCatRaw = String(raw.subCategory || raw.category || raw['Kategori'] || 'Other Base').trim();
-  const matchedCat = SUB_CATEGORIES.find(c => c.toLowerCase() === subCatRaw.toLowerCase()) || subCatRaw || 'Other Base';
-  const price = Number(raw.price !== '' && raw.price !== undefined ? raw.price : (raw['Harga Beli'] || 0)) || 0;
-  const packSize = Number(raw.packSize !== '' && raw.packSize !== undefined ? raw.packSize : (raw['Ukuran'] || 1)) || 1;
-  const unit = String(raw.unit || raw['Satuan'] || 'gram').trim();
-  let unitCost = Number(raw.unitCost !== '' && raw.unitCost !== undefined ? raw.unitCost : (raw['Unit Cost'] || 0)) || 0;
-  if (!unitCost && price > 0 && packSize > 0) unitCost = price / packSize;
-  const sortOrder = (raw.sortOrder !== '' && raw.sortOrder !== undefined && !isNaN(Number(raw.sortOrder)))
-    ? Number(raw.sortOrder) : (idx + 1);
-  const minStock = Number(raw.minStock || 0) || 0;
-
-  return {
-    ...raw,
-    id, ID: id,
-    name, 'Nama Bahan': name,
-    category: matchedCat, 'Kategori': matchedCat,
-    subCategory: matchedCat,
-    price, 'Harga Beli': price,
-    packSize, 'Ukuran': packSize,
-    unit, 'Satuan': unit,
-    unitCost, 'Unit Cost': unitCost,
-    sortOrder,
-    minStock
-  };
-}
-
-function getSortedIngredients() {
-  return [...STATE.ingredients].sort((a, b) => {
-    if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
-    const catA = SUB_CATEGORIES.indexOf(a.subCategory);
-    const catB = SUB_CATEGORIES.indexOf(b.subCategory);
-    if (catA !== catB) return (catA === -1 ? 99 : catA) - (catB === -1 ? 99 : catB);
-    return a.name.localeCompare(b.name);
-  });
-}
-
-// ==================== REUSABLE FAST INGREDIENT AUTOCOMPLETE (iOS KEYBOARD SAFE) ====================
-window._acCallbacks = {};
-
-function renderIngAutocompleteHtml(prefix, selectedIngId = '', placeholder = 'Ketik nama bahan baku...') {
-  const sorted = getSortedIngredients();
-  const sel = selectedIngId ? sorted.find(x => String(x.id) === String(selectedIngId)) : null;
-  const displayVal = sel ? `${sel.name} (${formatRp(sel.unitCost)}/${sel.unit})` : '';
+// ==================== PIC & 4-DIGIT PIN COMPONENT ====================
+function renderPicPinBoxHtml(prefix, subtitle = 'Verifikasi Penanggung Jawab (Wajib)') {
+  const options = STATE.teamBar.map(t => {
+    const isSel = STATE.selectedPic && STATE.selectedPic.toLowerCase() === t.nama.toLowerCase();
+    return `<option value="${escHtml(t.nama)}" ${isSel ? 'selected' : ''}>${escHtml(t.nama)} (${escHtml(t.jabatan)})</option>`;
+  }).join('');
 
   return `
-    <div class="relative" id="${prefix}_wrapper">
-      <input type="hidden" id="${prefix}_val" value="${escHtml(sel ? sel.id : '')}" />
-      <div class="relative flex items-center">
-        <input
-          type="text"
-          id="${prefix}_input"
-          value="${escHtml(displayVal)}"
-          placeholder="${escHtml(placeholder)}"
-          autocomplete="off"
-          autocorrect="off"
-          spellcheck="false"
-          onfocus="openIngAutocomplete('${prefix}')"
-          oninput="filterIngAutocomplete('${prefix}', this.value)"
-          class="w-full pl-3 pr-8 py-2 rounded-xl border border-stone-300 text-xs bg-white font-semibold focus:border-amber-600 focus:outline-none"
-        />
-        <button type="button" onclick="clearIngAutocomplete('${prefix}')"
-          class="absolute right-2 w-5 h-5 rounded-full bg-stone-200 text-stone-600 text-[10px] font-bold flex items-center justify-center">
-          ✕
-        </button>
+    <div class="p-3 rounded-2xl bg-amber-50/80 border border-amber-200 space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-extrabold text-amber-950">🔐 ${escHtml(subtitle)}</span>
+        <span class="text-[10px] text-amber-700 font-semibold">${STATE.teamBar.length} Tim Terdaftar</span>
       </div>
-      <div id="${prefix}_list" class="hidden mt-1 max-h-48 overflow-y-auto rounded-xl border border-stone-300 bg-white shadow-lg divide-y divide-stone-100 z-30"></div>
+      <div class="grid grid-cols-5 gap-2">
+        <div class="col-span-3">
+          <label class="block text-[10px] font-bold text-stone-600 mb-1">Nama PIC</label>
+          <select id="${prefix}_pic" onchange="STATE.selectedPic=this.value; localStorage.setItem('qose_last_pic', this.value);"
+            class="w-full px-2.5 py-2 rounded-xl border border-stone-300 bg-white text-xs font-bold text-stone-900 focus:border-amber-600 focus:outline-none">
+            <option value="">-- Pilih Nama --</option>
+            ${options}
+          </select>
+        </div>
+        <div class="col-span-2">
+          <label class="block text-[10px] font-bold text-stone-600 mb-1">PIN 4 Digit</label>
+          <input id="${prefix}_pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••"
+            class="w-full px-2.5 py-2 rounded-xl border border-amber-400 bg-white text-xs font-extrabold text-center tracking-widest text-stone-900 focus:border-amber-600 focus:outline-none" />
+        </div>
+      </div>
     </div>
   `;
 }
 
-function openIngAutocomplete(prefix) {
-  const input = document.getElementById(prefix + '_input');
-  const hidden = document.getElementById(prefix + '_val');
-  const q = (hidden && hidden.value) ? '' : (input ? input.value : '');
-  filterIngAutocomplete(prefix, q);
-}
+function getPicPinValues(prefix) {
+  const picEl = document.getElementById(`${prefix}_pic`);
+  const pinEl = document.getElementById(`${prefix}_pin`);
+  const picName = (picEl?.value || '').trim();
+  const pin = (pinEl?.value || '').trim();
 
-function clearIngAutocomplete(prefix) {
-  const input = document.getElementById(prefix + '_input');
-  const hidden = document.getElementById(prefix + '_val');
-  if (hidden) hidden.value = '';
-  if (input) {
-    input.value = '';
-    input.focus();
+  if (!picName) {
+    showToast('Pilih Nama PIC terlebih dahulu!');
+    if (picEl) picEl.focus();
+    return null;
   }
-  filterIngAutocomplete(prefix, '');
+  if (!/^\d{4}$/.test(pin)) {
+    showToast('Masukkan 4 digit angka PIN kamu!');
+    if (pinEl) pinEl.focus();
+    return null;
+  }
+  STATE.selectedPic = picName;
+  localStorage.setItem('qose_last_pic', picName);
+  return { picName, pin };
 }
 
-function filterIngAutocomplete(prefix, query) {
-  const listEl = document.getElementById(prefix + '_list');
+// ==================== AUTOCOMPLETE BAHAN BAKU ====================
+function renderIngAutocompleteHtml(prefix, selectedIngId = '', placeholder = 'Ketik nama bahan...') {
+  const sorted = getSortedIngredients();
+  const sel = selectedIngId ? sorted.find(x => String(x.id) === String(selectedIngId)) : null;
+  const initLabel = sel ? `${sel.name} (${sel.unit})` : '';
+
+  return `
+    <div class="relative">
+      <input type="hidden" id="${prefix}_val" value="${escHtml(selectedIngId)}" />
+      <input type="text" id="${prefix}_txt" value="${escHtml(initLabel)}" placeholder="${escHtml(placeholder)}" autocomplete="off"
+        onfocus="filterIngAc('${prefix}', this.value)"
+        oninput="document.getElementById('${prefix}_val').value=''; filterIngAc('${prefix}', this.value)"
+        class="w-full px-3 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold focus:border-amber-600 focus:outline-none" />
+      <div id="${prefix}_list" class="hidden absolute left-0 right-0 top-full mt-1 max-h-44 overflow-y-auto bg-white border border-stone-300 rounded-xl shadow-lg z-50 divide-y divide-stone-100"></div>
+    </div>
+  `;
+}
+
+function filterIngAc(prefix, query) {
+  const listEl = document.getElementById(`${prefix}_list`);
   if (!listEl) return;
   const q = String(query || '').trim().toLowerCase();
-  const sorted = getSortedIngredients();
-  const matches = q
-    ? sorted.filter(ing => ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q))
-    : sorted;
+  const matches = getSortedIngredients()
+    .filter(x => !q || x.name.toLowerCase().includes(q) || x.subCategory.toLowerCase().includes(q))
+    .slice(0, 25);
 
   if (matches.length === 0) {
-    listEl.innerHTML = `<div class="px-3 py-2.5 text-[11px] text-stone-400 text-center">Bahan tidak ditemukan</div>`;
+    listEl.innerHTML = `<div class="px-3 py-2 text-[11px] text-stone-400">Bahan tidak ditemukan</div>`;
   } else {
-    listEl.innerHTML = matches.slice(0, 60).map(ing => `
-      <button type="button" onclick="selectIngAutocomplete('${prefix}', '${escHtml(ing.id)}')"
-        class="w-full text-left px-3 py-2 hover:bg-amber-50 active:bg-amber-100 flex items-center justify-between gap-2">
-        <div class="min-w-0">
-          <p class="text-xs font-bold text-stone-800 truncate">${escHtml(ing.name)}</p>
-          <p class="text-[10px] text-stone-400">${escHtml(ing.subCategory)} • Satuan: ${escHtml(ing.unit)}</p>
-        </div>
-        <span class="text-[10px] font-bold text-amber-800 shrink-0">${formatRp(ing.unitCost)}/${escHtml(ing.unit)}</span>
+    listEl.innerHTML = matches.map(ing => `
+      <button type="button" onclick="selectIngAc('${prefix}', '${escHtml(ing.id)}')"
+        class="w-full text-left px-3 py-2 hover:bg-amber-50 flex items-center justify-between text-xs">
+        <span class="font-bold text-stone-900">${escHtml(ing.name)}</span>
+        <span class="text-[10px] text-stone-500">${escHtml(ing.subCategory)} • ${escHtml(ing.unit)}</span>
       </button>
     `).join('');
   }
   listEl.classList.remove('hidden');
 }
 
-function selectIngAutocomplete(prefix, ingId) {
+function selectIngAc(prefix, ingId) {
   const ing = STATE.ingredients.find(x => String(x.id) === String(ingId));
-  const input = document.getElementById(prefix + '_input');
-  const hidden = document.getElementById(prefix + '_val');
-  const listEl = document.getElementById(prefix + '_list');
-  if (hidden) hidden.value = ing ? ing.id : '';
-  if (input && ing) input.value = `${ing.name} (${formatRp(ing.unitCost)}/${ing.unit})`;
+  const valEl = document.getElementById(`${prefix}_val`);
+  const txtEl = document.getElementById(`${prefix}_txt`);
+  const listEl = document.getElementById(`${prefix}_list`);
+  if (valEl) valEl.value = ing ? ing.id : '';
+  if (txtEl) txtEl.value = ing ? `${ing.name} (${ing.unit})` : '';
   if (listEl) listEl.classList.add('hidden');
-  if (typeof window._acCallbacks[prefix] === 'function' && ing) {
+  if (ing && window._acCallbacks && typeof window._acCallbacks[prefix] === 'function') {
     window._acCallbacks[prefix](ing);
   }
 }
 
-// ==================== MONTHLY SUMMARY & CALCULATIONS ====================
-function getMonthKey(dateStr) {
-  return (dateStr || STATE.selectedDate).slice(0, 7);
+// ==================== CORE INVENTORY CALCULATIONS ====================
+function getSortedIngredients() {
+  return [...STATE.ingredients].sort((a, b) => {
+    const oa = Number(a.sortOrder) || 9999;
+    const ob = Number(b.sortOrder) || 9999;
+    if (oa !== ob) return oa - ob;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
 }
 
-function getMonthlySummaryMap(monthKey) {
-  const mKey = monthKey || getMonthKey(STATE.selectedDate);
+function getIngUnitCost(ing) {
+  if (!ing) return 0;
+  const price = Number(ing.price) || 0;
+  const pack = Number(ing.packSize) || 1;
+  if (price > 0 && pack > 0) return price / pack;
+  return Number(ing.unitCost) || 0;
+}
+
+function getDailyRecord(dateStr, ingId) {
+  const draftKey = `${dateStr}__${ingId}`;
+  const saved = STATE.invDaily.find(r => String(r.date) === String(dateStr) && String(r.ingId) === String(ingId));
+  const draft = STATE.draftDaily[draftKey];
+
+  const inQty = draft && draft.inQty !== undefined ? Number(draft.inQty) || 0 : (saved ? Number(saved.inQty) || 0 : 0);
+  const outQty = draft && draft.outQty !== undefined ? Number(draft.outQty) || 0 : (saved ? Number(saved.outQty) || 0 : 0);
+  const wasteQty = draft && draft.wasteQty !== undefined ? Number(draft.wasteQty) || 0 : (saved ? Number(saved.wasteQty) || 0 : 0);
+  const clQty = inQty - outQty - wasteQty;
+
+  return {
+    inQty,
+    outQty,
+    wasteQty,
+    clQty,
+    picName: saved ? (saved.picName || '') : '',
+    updatedAt: saved ? (saved.updatedAt || '') : '',
+    isDirty: Boolean(draft)
+  };
+}
+
+function getMonthlySummaryMap(mKey) {
   const map = {};
-  STATE.invMonthly.filter(r => String(r.monthKey) === mKey).forEach(r => {
-    map[String(r.ingId)] = { ...r };
+  STATE.ingredients.forEach(ing => {
+    map[ing.id] = {
+      ingId: ing.id,
+      totalIn: 0,
+      totalOut: 0,
+      totalWaste: 0,
+      totalCl: 0,
+      soQty: '',
+      selisih: 0,
+      pemakaianBar: 0,
+      wasteCost: 0,
+      valueSo: 0,
+      picName: '',
+      updatedAt: ''
+    };
   });
 
-  const dailyAgg = {};
-  STATE.invDaily.filter(r => String(r.monthKey) === mKey).forEach(r => {
-    const id = String(r.ingId);
-    if (!dailyAgg[id]) dailyAgg[id] = { totalIn: 0, totalOut: 0 };
-    dailyAgg[id].totalIn += Number(r.inQty) || 0;
-    dailyAgg[id].totalOut += Number(r.outQty) || 0;
+  STATE.invDaily.forEach(r => {
+    const rMonth = r.monthKey || String(r.date || '').slice(0, 7);
+    if (rMonth !== mKey) return;
+    if (!map[r.ingId]) {
+      map[r.ingId] = {
+        ingId: r.ingId, totalIn: 0, totalOut: 0, totalWaste: 0, totalCl: 0,
+        soQty: '', selisih: 0, pemakaianBar: 0, wasteCost: 0, valueSo: 0, picName: '', updatedAt: ''
+      };
+    }
+    map[r.ingId].totalIn += Number(r.inQty) || 0;
+    map[r.ingId].totalOut += Number(r.outQty) || 0;
+    map[r.ingId].totalWaste += Number(r.wasteQty) || 0;
+  });
+
+  STATE.invMonthly.forEach(m => {
+    if (String(m.monthKey) !== mKey) return;
+    if (!map[m.ingId]) return;
+    if (m.soQty !== '' && m.soQty !== null && m.soQty !== undefined) {
+      map[m.ingId].soQty = Number(m.soQty);
+    }
+    map[m.ingId].picName = m.picName || '';
+    map[m.ingId].updatedAt = m.updatedAt || '';
   });
 
   STATE.ingredients.forEach(ing => {
-    const id = String(ing.id);
-    const base = map[id] || {};
-    const agg = dailyAgg[id] || {
-      totalIn: Number(base.totalIn) || 0,
-      totalOut: Number(base.totalOut) || 0
-    };
-    const totalCl = agg.totalIn - agg.totalOut;
-    const hasSo = base.soQty !== '' && base.soQty !== null && base.soQty !== undefined;
-    const soQty = hasSo ? Number(base.soQty) : '';
-    const selisih = hasSo ? (soQty - totalCl) : 0;
+    const s = map[ing.id];
+    const unitCost = getIngUnitCost(ing);
+    s.totalCl = s.totalIn - s.totalOut - s.totalWaste;
+    s.pemakaianBar = s.totalOut * unitCost;
+    s.wasteCost = s.totalWaste * unitCost;
 
-    const pemakaianBarRp = agg.totalOut * (Number(ing.unitCost) || 0);
-    const valueSo = hasSo ? (soQty * (Number(ing.unitCost) || 0)) : 0;
-
-    map[id] = {
-      ingId: id,
-      monthKey: mKey,
-      totalIn: agg.totalIn,
-      totalOut: agg.totalOut,
-      totalCl,
-      soQty,
-      selisih,
-      pemakaianBar: pemakaianBarRp,
-      valueSo
-    };
+    const draft = STATE.draftMonthly[`${mKey}__${ing.id}`];
+    const activeSo = draft && draft.soQty !== undefined ? draft.soQty : s.soQty;
+    if (activeSo !== '' && activeSo !== null && activeSo !== undefined) {
+      const soNum = Number(activeSo) || 0;
+      s.selisih = soNum - s.totalCl;
+      s.valueSo = soNum * unitCost;
+    } else {
+      s.selisih = 0;
+      s.valueSo = 0;
+    }
   });
 
   return map;
 }
 
 function getCurrentStock(ingId) {
-  const curMonth = new Date().toISOString().slice(0, 7);
+  const curMonth = getLocalTodayStr().slice(0, 7);
   const mMap = getMonthlySummaryMap(curMonth);
-  if (mMap[String(ingId)]) return Number(mMap[String(ingId)].totalCl) || 0;
-  return 0;
+  return mMap[ingId] ? mMap[ingId].totalCl : 0;
 }
 
-function getLowStockItems() {
-  const curMonth = new Date().toISOString().slice(0, 7);
-  const mMap = getMonthlySummaryMap(curMonth);
-  return getSortedIngredients().filter(ing => {
-    if (!ing.minStock || ing.minStock <= 0) return false;
-    const current = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
-    return current <= ing.minStock;
-  }).map(ing => ({
-    ...ing,
-    currentStock: mMap[ing.id] ? mMap[ing.id].totalCl : 0
-  }));
-}
-
-function saveLocalCache() {
+function normalizeRecipe(raw, idx = 0) {
+  let items = [];
   try {
-    localStorage.setItem('bvg_intel_cache_v3', JSON.stringify({
+    items = typeof raw.ingredients === 'string' ? JSON.parse(raw.ingredients || '[]') : (raw.ingredients || []);
+  } catch (e) {
+    items = [];
+  }
+  items = items.map(it => {
+    const master = STATE.ingredients.find(x => String(x.id) === String(it.ingId));
+    const unitCost = master ? getIngUnitCost(master) : (Number(it.unitCost) || 0);
+    return {
+      ingId: String(it.ingId || ''),
+      name: master ? master.name : String(it.name || 'Bahan'),
+      unit: master ? master.unit : String(it.unit || 'gram'),
+      qty: Number(it.qty) || 0,
+      unitCost
+    };
+  });
+  const hpp = items.reduce((sum, it) => sum + (it.qty * it.unitCost), 0);
+  const sellingPrice = Number(raw.sellingPrice) || 0;
+  const margin = sellingPrice > 0 ? (((sellingPrice - hpp) / sellingPrice) * 100) : 0;
+
+  return {
+    id: String(raw.id || ('rcp_' + idx)),
+    name: String(raw.name || 'Menu'),
+    category: String(raw.category || 'Signature'),
+    sellingPrice,
+    items,
+    hpp,
+    margin,
+    notes: String(raw.notes || ''),
+    salesQty: Number(raw.salesQty) || 0,
+    salesByMonth: raw.salesByMonth || {}
+  };
+}
+
+// ==================== API SYNC & BACKEND POST ====================
+function saveCacheToLocal() {
+  try {
+    localStorage.setItem('qose_inv_cache_v2', JSON.stringify({
       ingredients: STATE.ingredients,
       recipes: STATE.recipes,
       invDaily: STATE.invDaily,
       invMonthly: STATE.invMonthly,
       purchaseOrders: STATE.purchaseOrders,
-      vendors: STATE.vendors
+      vendors: STATE.vendors,
+      teamBar: STATE.teamBar
     }));
   } catch (e) {}
 }
 
-function loadLocalCache() {
+function loadCacheFromLocal() {
   try {
-    const raw = JSON.parse(localStorage.getItem('bvg_intel_cache_v3') || 'null');
-    if (!raw) return;
-    STATE.ingredients = (raw.ingredients || []).map(normalizeIngredient);
+    const raw = JSON.parse(localStorage.getItem('qose_inv_cache_v2') || 'null');
+    if (!raw) return false;
+    STATE.ingredients = raw.ingredients || [];
     STATE.recipes = raw.recipes || [];
     STATE.invDaily = raw.invDaily || [];
     STATE.invMonthly = raw.invMonthly || [];
     STATE.purchaseOrders = raw.purchaseOrders || [];
     STATE.vendors = raw.vendors || [];
-  } catch (e) {}
-}
-
-function applyServerState(data) {
-  if (!data || data.status !== 'success') return;
-  STATE.ingredients = (data.ingredients || []).map(normalizeIngredient);
-  STATE.recipes = data.recipes || [];
-  STATE.invDaily = data.invDaily || [];
-  STATE.invMonthly = data.invMonthly || [];
-  STATE.purchaseOrders = data.purchaseOrders || [];
-  STATE.vendors = data.vendors || [];
-  saveLocalCache();
-}
-
-function updateSyncBadge(statusText, isError) {
-  const badge = document.getElementById('syncStatusBadge');
-  if (!badge) return;
-  badge.textContent = statusText;
-  badge.className = isError
-    ? 'text-[11px] px-2.5 py-1 rounded-full bg-rose-600/20 text-rose-300 border border-rose-500/40 font-semibold active:scale-95'
-    : 'text-[11px] px-2.5 py-1 rounded-full bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 font-semibold active:scale-95';
-}
-
-async function syncAllData(manual = false) {
-  if (!STATE.apiUrl) {
-    updateSyncBadge('● Set URL', true);
-    renderCurrentTab();
-    return;
-  }
-  STATE.isSyncing = true;
-  updateSyncBadge('↻ Syncing...', false);
-  try {
-    const res = await fetch(STATE.apiUrl + '?t=' + Date.now());
-    const data = await res.json();
-    applyServerState(data);
-    recordSyncInfo(true);
-    updateSyncBadge('● Synced', false);
-    if (manual) showToast('Data tersinkron dengan Google Sheets');
-  } catch (err) {
-    recordSyncInfo(false);
-    updateSyncBadge('● Offline', true);
-    if (manual) showToast('Gagal sinkronisasi, cek koneksi');
-  } finally {
-    STATE.isSyncing = false;
-    renderCurrentTab();
-  }
-}
-
-async function postToBackend(payload, successMsg, silent = false) {
-  if (!STATE.apiUrl) {
-    if (!silent) openSettingsModal();
+    STATE.teamBar = raw.teamBar || [];
+    return true;
+  } catch (e) {
     return false;
   }
-  updateSyncBadge('↻ Saving...', false);
+}
+
+async function loadAllData(silent = false) {
+  if (!STATE.gasUrl) return;
+  STATE.isLoading = true;
+  updateSyncIndicator(true);
   try {
-    const res = await fetch(STATE.apiUrl, {
+    const res = await fetch(`${STATE.gasUrl}?t=${Date.now()}`);
+    const data = await res.json();
+    if (data.status === 'ok') {
+      STATE.ingredients = data.ingredients || [];
+      STATE.recipes = data.recipes || [];
+      STATE.invDaily = data.invDaily || [];
+      STATE.invMonthly = data.invMonthly || [];
+      STATE.purchaseOrders = data.purchaseOrders || [];
+      STATE.vendors = data.vendors || [];
+      STATE.teamBar = data.teamBar || [];
+      saveCacheToLocal();
+      if (!silent) showToast('Data tersinkronisasi');
+    } else {
+      if (!silent) showToast('Gagal sync: ' + (data.message || 'Error'));
+    }
+  } catch (err) {
+    if (!silent) showToast('Mode offline / gagal terhubung ke Sheets');
+  } finally {
+    STATE.isLoading = false;
+    updateSyncIndicator(false);
+    renderCurrentTab();
+  }
+}
+
+async function postToBackend(payload, successMsg = 'Tersimpan!', silent = false) {
+  if (!STATE.gasUrl) {
+    showToast('URL Apps Script belum diatur');
+    return false;
+  }
+  updateSyncIndicator(true);
+  try {
+    const res = await fetch(STATE.gasUrl, {
       method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
-    if (data.status === 'success') {
-      applyServerState(data);
-      recordSyncInfo(true);
-      updateSyncBadge('● Synced', false);
-      if (successMsg) showToast(successMsg);
-      if (!silent) renderCurrentTab();
-      return true;
-    } else {
-      throw new Error(data.message || 'Server error');
+    if (data.status !== 'ok') {
+      showToast('❌ ' + (data.message || 'Gagal menyimpan data'), 3500);
+      updateSyncIndicator(false);
+      return false;
     }
+    await loadAllData(true);
+    if (!silent && successMsg) showToast('✅ ' + successMsg);
+    return true;
   } catch (err) {
-    recordSyncInfo(false);
-    updateSyncBadge('● Error', true);
-    if (!silent) showToast('Gagal menyimpan ke server');
+    showToast('❌ Koneksi gagal: ' + err.message, 3200);
+    updateSyncIndicator(false);
     return false;
   }
 }
 
-function openSettingsModal() {
-  openModal('Pengaturan Koneksi Database', `
-    <div class="space-y-3">
-      <p class="text-xs text-stone-600">Tempelkan <b>URL Aplikasi Web</b> dari Google Apps Script agar seluruh tim dan manajemen tersinkron otomatis.</p>
-      <div>
-        <label class="block text-xs font-bold text-stone-700 mb-1">Web App URL</label>
-        <input id="inputApiUrl" type="url" value="${escHtml(STATE.apiUrl)}" placeholder="https://script.google.com/macros/s/.../exec"
-          class="w-full px-3 py-2 border border-stone-300 rounded-xl text-xs focus:outline-none focus:border-amber-600" />
+function updateSyncIndicator(loading) {
+  const btn = document.getElementById('syncHeaderBtn');
+  if (!btn) return;
+  btn.textContent = loading ? '↻ Sync...' : '🔄 Sync';
+  btn.disabled = loading;
+}
+
+// ==================== HOME DASHBOARD TAB ====================
+function renderHomeTab(main) {
+  const curMonth = getLocalTodayStr().slice(0, 7);
+  const mMap = getMonthlySummaryMap(curMonth);
+  const sorted = getSortedIngredients();
+
+  let totalValueSo = 0;
+  let totalPemakaianBar = 0;
+  let totalWasteRp = 0;
+  const lowStockList = [];
+
+  sorted.forEach(ing => {
+    const s = mMap[ing.id];
+    if (!s) return;
+    totalValueSo += s.valueSo;
+    totalPemakaianBar += s.pemakaianBar;
+    totalWasteRp += s.wasteCost;
+    const min = Number(ing.minStock) || 0;
+    if (min > 0 && s.totalCl <= min) {
+      lowStockList.push({ ing, cur: s.totalCl, min });
+    }
+  });
+
+  const isOverLimit = totalValueSo > 20000000;
+
+  // Log aktivitas PIC terbaru dari Daily Inventory
+  const recentLogs = [...STATE.invDaily]
+    .filter(r => r.picName)
+    .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)))
+    .slice(0, 4);
+
+  main.innerHTML = `
+    <section class="bg-stone-900 text-white p-4 rounded-3xl shadow-md mb-3 space-y-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <span class="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Qose Coffee • Bar Control</span>
+          <h2 class="text-base font-extrabold">Ringkasan Periode ${curMonth}</h2>
+        </div>
+        <span class="px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-bold">${STATE.teamBar.length} PIC Aktif</span>
       </div>
-      <button onclick="saveApiUrlSetting()" class="w-full py-2.5 rounded-xl bg-stone-900 text-white font-bold text-xs active:scale-95">
-        Simpan &amp; Sinkronkan Sekarang
+
+      <div class="p-3 rounded-2xl bg-white/10 border border-white/10">
+        <div class="flex items-center justify-between text-[11px] text-stone-300">
+          <span>Total Value Stok Fisik (SO)</span>
+          <span>Batas: Rp 20.000.000</span>
+        </div>
+        <div class="text-lg font-extrabold mt-0.5 ${isOverLimit ? 'text-rose-400' : 'text-emerald-400'}">
+          ${formatRp(totalValueSo)}
+        </div>
+        <p class="text-[10px] mt-1 ${isOverLimit ? 'text-rose-300' : 'text-stone-300'}">
+          ${isOverLimit ? '⚠️ Melebihi batas acuan stok Rp 20 juta' : '✓ Aman di bawah batas maksimal Rp 20 juta'}
+        </p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div class="p-2.5 rounded-2xl bg-white/5 border border-white/10">
+          <span class="text-[10px] text-stone-400 block">Pemakaian Bar (OUT)</span>
+          <b class="text-xs text-amber-300">${formatRp(totalPemakaianBar)}</b>
+        </div>
+        <div class="p-2.5 rounded-2xl bg-rose-500/15 border border-rose-400/20">
+          <span class="text-[10px] text-rose-200 block">Total Waste Bar</span>
+          <b class="text-xs text-rose-300">${formatRp(totalWasteRp)}</b>
+        </div>
+      </div>
+    </section>
+
+    <!-- Alert Par Stock -->
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs font-extrabold text-stone-900">🚨 Alert Par Stock (${lowStockList.length})</h3>
+        <button onclick="downloadParStockPdf()" class="text-[10px] font-bold text-amber-700 underline">PDF Par Stock</button>
+      </div>
+      ${lowStockList.length === 0 ? `
+        <p class="text-[11px] text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl font-semibold">✓ Semua stok bahan baku aman di atas batas minimum.</p>
+      ` : `
+        <div class="space-y-1.5 max-h-48 overflow-y-auto">
+          ${lowStockList.map(item => `
+            <div class="flex items-center justify-between p-2 rounded-xl bg-rose-50 border border-rose-200 text-xs">
+              <div>
+                <p class="font-bold text-stone-900">${escHtml(item.ing.name)}</p>
+                <p class="text-[10px] text-rose-700">Sisa: <b>${formatNum(item.cur)}</b> / Min: ${formatNum(item.min)} ${escHtml(item.ing.unit)}</p>
+              </div>
+              <button onclick="quickOrderFromAlert('${escHtml(item.ing.id)}')"
+                class="px-2.5 py-1.5 rounded-xl bg-amber-600 text-white text-[10px] font-bold shrink-0">
+                + PO
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </section>
+
+    <!-- Jejak Input Terakhir PIC -->
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+      <h3 class="text-xs font-extrabold text-stone-900 mb-2">🕵️ Jejak Penginput Terakhir</h3>
+      ${recentLogs.length === 0 ? `
+        <p class="text-[11px] text-stone-400">Belum ada riwayat input PIC tercatat.</p>
+      ` : `
+        <div class="space-y-1.5">
+          ${recentLogs.map(log => `
+            <div class="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-xl bg-stone-50 border border-stone-100">
+              <div>
+                <b class="text-stone-900">${escHtml(log.picName)}</b>
+                <span class="text-stone-500"> • ${escHtml(log.ingName)}</span>
+              </div>
+              <span class="text-[10px] text-stone-400">${escHtml(log.updatedAt || log.date)}</span>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </section>
+  `;
+}
+
+// ==================== MASTER & RECIPES TAB ====================
+function renderMasterTab(main) {
+  const isIng = STATE.masterSubTab !== 'recipes';
+  const sorted = getSortedIngredients();
+
+  main.innerHTML = `
+    <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3">
+      <button onclick="STATE.masterSubTab='ingredients'; renderCurrentTab();"
+        class="py-2 rounded-lg text-xs font-bold ${isIng ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}">
+        🧪 Master (${STATE.ingredients.length})
+      </button>
+      <button onclick="STATE.masterSubTab='recipes'; renderCurrentTab();"
+        class="py-2 rounded-lg text-xs font-bold ${!isIng ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'}">
+        ☕ Resep (${STATE.recipes.length})
+      </button>
+    </div>
+
+    ${isIng ? renderMasterIngredientsHtml(sorted) : renderMasterRecipesHtml()}
+  `;
+}
+
+function renderMasterIngredientsHtml(sorted) {
+  const q = STATE.ingSearch.trim().toLowerCase();
+  const filtered = sorted.filter(ing => {
+    const matchCat = STATE.ingCatFilter === 'ALL' || ing.subCategory === STATE.ingCatFilter;
+    const matchQ = !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q);
+    return matchCat && matchQ;
+  });
+
+  return `
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
+        <div>
+          <h2 class="text-sm font-bold text-stone-900">Master Bahan Baku Bar</h2>
+          <p class="text-[11px] text-stone-500">Harga satuan terkecil &amp; batas Par Stock</p>
+        </div>
+        <button onclick="openIngredientModal()" class="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0">
+          + Bahan
+        </button>
+      </div>
+      <input type="text" value="${escHtml(STATE.ingSearch)}" oninput="STATE.ingSearch=this.value; renderCurrentTab();"
+        placeholder="Cari nama bahan..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
+      <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        ${['ALL', ...SUB_CATEGORIES].map(cat => `
+          <button onclick="STATE.ingCatFilter='${cat}'; renderCurrentTab();"
+            class="px-2.5 py-1 rounded-full text-[11px] font-semibold shrink-0 ${STATE.ingCatFilter === cat ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}">
+            ${cat === 'ALL' ? 'Semua' : cat}
+          </button>
+        `).join('')}
+      </div>
+    </section>
+
+    <section class="space-y-2">
+      ${filtered.map(ing => {
+        const uCost = getIngUnitCost(ing);
+        return `
+          <div class="bg-white p-3 rounded-2xl shadow-sm border border-stone-200 flex items-center justify-between gap-2">
+            <div>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-bold">${escHtml(ing.subCategory)}</span>
+              <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(ing.name)}</h3>
+              <p class="text-[11px] text-stone-500">
+                ${formatRp(ing.price)} / ${formatNum(ing.packSize)} ${escHtml(ing.unit)}
+                • <b class="text-amber-800">${formatRp(uCost)}/${escHtml(ing.unit)}</b>
+                • Min: ${formatNum(ing.minStock)}
+              </p>
+            </div>
+            <div class="flex gap-1 shrink-0">
+              <button onclick="openIngredientModal('${escHtml(ing.id)}')" class="w-8 h-8 rounded-xl bg-stone-100 text-xs">✏️</button>
+              <button onclick="deleteIngredientAction('${escHtml(ing.id)}')" class="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 text-xs">🗑️</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </section>
+  `;
+}
+
+function openIngredientModal(editId = '') {
+  const ing = editId ? STATE.ingredients.find(x => String(x.id) === String(editId)) : null;
+  openModal(ing ? 'Edit Bahan Baku' : '+ Tambah Bahan Baku', `
+    <div class="space-y-2.5">
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Bahan</label>
+        <input id="ingFormName" type="text" value="${escHtml(ing ? ing.name : '')}" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Sub Kategori</label>
+          <select id="ingFormCat" class="w-full px-2.5 py-2 rounded-xl border border-stone-300 text-xs bg-white">
+            ${SUB_CATEGORIES.map(c => `<option value="${c}" ${ing && ing.subCategory === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Satuan Terkecil</label>
+          <select id="ingFormUnit" class="w-full px-2.5 py-2 rounded-xl border border-stone-300 text-xs bg-white">
+            ${['gram', 'ml', 'pcs', 'shot', 'scoop'].map(u => `<option value="${u}" ${ing && ing.unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Harga Beli (Rp)</label>
+          <input id="ingFormPrice" type="number" value="${ing ? ing.price : ''}" placeholder="20000" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Isi Kemasan</label>
+          <input id="ingFormPack" type="number" value="${ing ? ing.packSize : ''}" placeholder="1000" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Batas Minimum / Par Stock</label>
+        <input id="ingFormMin" type="number" value="${ing ? ing.minStock : 0}" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+      </div>
+      <button onclick="submitIngredientForm('${escHtml(editId)}')" class="w-full py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs">
+        💾 Simpan Bahan Baku
       </button>
     </div>
   `);
 }
 
-function saveApiUrlSetting() {
-  const val = (document.getElementById('inputApiUrl')?.value || '').trim();
-  if (!val.startsWith('https://script.google.com/')) {
-    showToast('URL Apps Script tidak valid');
-    return;
-  }
-  STATE.apiUrl = val;
-  localStorage.setItem('bvg_intel_api_url', val);
+async function submitIngredientForm(editId) {
+  const name = (document.getElementById('ingFormName')?.value || '').trim();
+  const subCategory = document.getElementById('ingFormCat')?.value || 'Other Base';
+  const unit = document.getElementById('ingFormUnit')?.value || 'gram';
+  const price = Number(document.getElementById('ingFormPrice')?.value) || 0;
+  const packSize = Number(document.getElementById('ingFormPack')?.value) || 1;
+  const minStock = Number(document.getElementById('ingFormMin')?.value) || 0;
+  const unitCost = packSize > 0 ? (price / packSize) : 0;
+
+  if (!name) { showToast('Nama bahan wajib diisi'); return; }
   closeModal();
-  syncAllData(true);
+
+  const updated = [...STATE.ingredients];
+  if (editId) {
+    const idx = updated.findIndex(x => String(x.id) === String(editId));
+    if (idx >= 0) updated[idx] = { ...updated[idx], name, subCategory, unit, price, packSize, unitCost, minStock };
+  } else {
+    updated.push({ id: 'ing_' + Date.now(), name, subCategory, unit, price, packSize, unitCost, minStock, sortOrder: updated.length + 1 });
+  }
+  await postToBackend({ action: 'saveMasterIngredients', ingredients: updated }, `Bahan ${name} disimpan!`);
 }
 
-function switchTab(tab) {
-  STATE.activeTab = tab;
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    const isActive = btn.dataset.tab === tab;
-    btn.className = isActive
-      ? 'nav-btn flex flex-col items-center py-1 rounded-lg text-amber-700 font-bold'
-      : 'nav-btn flex flex-col items-center py-1 rounded-lg text-stone-500';
-  });
-  renderCurrentTab();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+async function deleteIngredientAction(id) {
+  const updated = STATE.ingredients.filter(x => String(x.id) !== String(id));
+  await postToBackend({ action: 'saveMasterIngredients', ingredients: updated }, 'Bahan dihapus');
 }
 
-function renderCurrentTab() {
-  const main = document.getElementById('mainContent');
-  if (!main) return;
+function renderMasterRecipesHtml() {
+  const recipes = STATE.recipes.map(normalizeRecipe);
+  const q = STATE.recipeSearch.trim().toLowerCase();
+  const filtered = recipes.filter(r => !q || r.name.toLowerCase().includes(q) || r.category.toLowerCase().includes(q));
 
-  if (STATE.activeTab === 'home') renderHomeTab(main);
-  else if (STATE.activeTab === 'daily' && typeof renderDailyTab === 'function') renderDailyTab(main);
-  else if (STATE.activeTab === 'parstock' && typeof renderParStockTab === 'function') renderParStockTab(main);
-  else if (STATE.activeTab === 'po' && typeof renderPoVendorTab === 'function') renderPoVendorTab(main);
-  else if (STATE.activeTab === 'master' && typeof renderMasterTab === 'function') renderMasterTab(main);
-}
-
-function renderHomeTab(main) {
-  const lowItems = getLowStockItems();
-  const curMonth = new Date().toISOString().slice(0, 7);
-  const mMap = getMonthlySummaryMap(curMonth);
-  const totalSoValue = Object.values(mMap).reduce((sum, x) => sum + (Number(x.valueSo) || 0), 0);
-  const isOverLimit = totalSoValue > 20000000;
-
-  const syncInfo = STATE.lastSyncInfo;
-  const syncStatusHtml = syncInfo
-    ? (syncInfo.success
-        ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">● Success</span>`
-        : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px]">● Gagal / Offline</span>`)
-    : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 font-bold text-[10px]">● Belum Sync</span>`;
-  const syncTimeText = syncInfo ? formatSyncTimestamp(syncInfo.timestamp) : 'Belum ada riwayat sinkronisasi';
-
-  const urlBanner = !STATE.apiUrl ? `
-    <div class="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 mb-3 flex items-center justify-between gap-2">
-      <div>
-        <p class="text-xs font-bold text-amber-900">Hubungkan Google Sheets</p>
-        <p class="text-[11px] text-amber-700">Masukkan URL Apps Script untuk memuat 108+ data bahan.</p>
-      </div>
-      <button onclick="openSettingsModal()" class="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0">Atur URL</button>
-    </div>
-  ` : '';
-
-  const lowListHtml = lowItems.length === 0
-    ? `<div class="text-center py-6 text-xs text-emerald-700 bg-emerald-50/70 rounded-xl border border-emerald-200">
-         Semua stok bahan baku masih di atas batas minimum Par Stock.
-       </div>`
-    : `<div class="space-y-2 max-h-80 overflow-y-auto pr-1">
-        ${lowItems.map(item => `
-          <div class="flex items-center justify-between p-2.5 rounded-xl bg-rose-50 border border-rose-200">
-            <div>
-              <p class="text-xs font-bold text-stone-800">${escHtml(item.name)}</p>
-              <p class="text-[10px] text-stone-500">${escHtml(item.subCategory)} • Min: <b>${formatNum(item.minStock)} ${escHtml(item.unit)}</b></p>
-            </div>
-            <div class="text-right">
-              <span class="inline-block px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-bold">
-                Sisa: ${formatNum(item.currentStock)} ${escHtml(item.unit)}
-              </span>
-              <button onclick="quickOrderFromAlert('${escHtml(item.id)}')" class="block ml-auto mt-1 text-[10px] font-bold text-amber-800 underline">
-                + Buat PO
-              </button>
-            </div>
-          </div>
-        `).join('')}
-      </div>`;
-
-  main.innerHTML = `
-    ${urlBanner}
-
-    <div class="bg-white px-3.5 py-2.5 rounded-2xl shadow-sm border border-stone-200 mb-3 flex items-center justify-between gap-2">
-      <div class="min-w-0">
-        <div class="flex items-center gap-1.5">
-          <span class="text-[10px] font-bold text-stone-500 uppercase tracking-wide">Status Sinkronisasi:</span>
-          ${syncStatusHtml}
-        </div>
-        <p class="text-[11px] font-semibold text-stone-700 mt-0.5 truncate">${syncTimeText}</p>
-      </div>
-      <button onclick="syncAllData(true)" class="px-2.5 py-1.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 text-[11px] font-bold shrink-0 active:scale-95">
-        ↻ Sync
-      </button>
-    </div>
-
-    <div class="grid grid-cols-2 gap-2.5 mb-3">
-      <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-        <p class="text-[11px] text-stone-500 font-medium">Total Raw Material</p>
-        <p class="text-xl font-extrabold text-stone-900 mt-0.5">${STATE.ingredients.length} <span class="text-xs font-normal text-stone-400">items</span></p>
-      </div>
-      <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-        <p class="text-[11px] text-stone-500 font-medium">Waktunya Order</p>
-        <p class="text-xl font-extrabold ${lowItems.length > 0 ? 'text-rose-600' : 'text-emerald-600'} mt-0.5">${lowItems.length} <span class="text-xs font-normal text-stone-400">bahan</span></p>
-      </div>
-      <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-        <p class="text-[11px] text-stone-500 font-medium">Total Value SO (${curMonth})</p>
-        <p class="text-sm font-extrabold ${isOverLimit ? 'text-rose-600' : 'text-emerald-700'} mt-1">${formatRp(totalSoValue)}</p>
-      </div>
-      <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-        <p class="text-[11px] text-stone-500 font-medium">Total PO Tercatat</p>
-        <p class="text-xl font-extrabold text-amber-700 mt-0.5">${STATE.purchaseOrders.length} <span class="text-xs font-normal text-stone-400">order</span></p>
-      </div>
-    </div>
-
-    <section class="bg-white p-4 rounded-2xl shadow-sm border border-stone-200 mb-3">
-      <div class="flex items-center justify-between mb-3">
+  return `
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
+      <div class="flex items-center justify-between gap-2">
         <div>
-          <h2 class="text-sm font-bold text-stone-900">⚠️ Pengingat Order (Lewat Batas Minimum)</h2>
-          <p class="text-[11px] text-stone-500">Otomatis membandingkan sisa Daily Inventory vs Par Stock</p>
+          <h2 class="text-sm font-bold text-stone-900">Resep, HPP &amp; SOP Bar</h2>
+          <p class="text-[11px] text-stone-500">Kalkulasi otomatis COGS &amp; ekspor PDF</p>
         </div>
-        <button onclick="switchTab('parstock')" class="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200">
-          Atur Par
+        <button onclick="openRecipeModal()" class="px-3 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold shrink-0">
+          + Resep
         </button>
       </div>
-      ${lowListHtml}
+      <input type="text" value="${escHtml(STATE.recipeSearch)}" oninput="STATE.recipeSearch=this.value; renderCurrentTab();"
+        placeholder="Cari nama menu..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
     </section>
 
-    <section class="grid grid-cols-2 gap-2.5">
-      <button onclick="switchTab('daily')" class="p-3.5 rounded-2xl bg-stone-900 text-white text-left shadow-sm active:scale-95">
-        <span class="text-lg">📦</span>
-        <p class="text-xs font-bold mt-1">Input Daily Inventory</p>
-        <p class="text-[10px] text-stone-400">Catat IN / OUT &amp; cetak PDF</p>
-      </button>
-      <button onclick="switchTab('po')" class="p-3.5 rounded-2xl bg-amber-600 text-white text-left shadow-sm active:scale-95">
-        <span class="text-lg">🛒</span>
-        <p class="text-xs font-bold mt-1">Purchasing Order</p>
-        <p class="text-[10px] text-amber-100">Ajukan order &amp; cek vendor</p>
-      </button>
+    <section class="space-y-2.5">
+      ${filtered.map(r => {
+        const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
+        return `
+          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(r.category)}</span>
+                <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(r.name)}</h3>
+              </div>
+              <div class="flex gap-1">
+                <button onclick="openRecipeModal('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
+                <button onclick="deleteRecipeAction('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
+              <div><span class="text-stone-400 block text-[10px]">Harga Jual</span><b>${formatRp(r.sellingPrice)}</b></div>
+              <div><span class="text-stone-400 block text-[10px]">HPP (${cogsPct}%)</span><b class="text-amber-800">${formatRp(r.hpp)}</b></div>
+              <div><span class="text-stone-400 block text-[10px]">Margin</span><b class="text-emerald-700">${r.margin.toFixed(1)}%</b></div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-2.5">
+              <button onclick="downloadSingleRecipeHppPdf('${escHtml(r.id)}')" class="py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold">📄 PDF HPP</button>
+              <button onclick="downloadSingleRecipeSopPdf('${escHtml(r.id)}')" class="py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-[11px] font-bold">📋 PDF SOP</button>
+            </div>
+          </div>
+        `;
+      }).join('')}
     </section>
   `;
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  STATE.apiUrl = detectSavedApiUrl();
-  loadLastSyncInfo();
-  loadLocalCache();
+function openRecipeModal(editId = '') {
+  const existing = editId ? normalizeRecipe(STATE.recipes.find(x => String(x.id) === String(editId)) || {}) : null;
+  window._recipeDraftItems = existing ? existing.items.map(x => ({ ...x })) : [];
+
+  window._acCallbacks['rcpAc'] = (ing) => {
+    window._recipeDraftItems.push({ ingId: ing.id, name: ing.name, unit: ing.unit, qty: 0, unitCost: getIngUnitCost(ing) });
+    document.getElementById('rcpAc_txt').value = '';
+    document.getElementById('rcpAc_val').value = '';
+    renderRecipeDraftRows();
+  };
+
+  openModal(existing ? 'Edit Resep Menu' : '+ Tambah Resep Menu', `
+    <div class="space-y-2.5">
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Nama Menu</label>
+        <input id="rcpName" type="text" value="${escHtml(existing ? existing.name : '')}" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Kategori</label>
+          <select id="rcpCat" class="w-full px-2.5 py-2 rounded-xl border border-stone-300 text-xs bg-white">
+            ${['Signature', 'Coffee', 'Non-Coffee', 'Matcha & Tea', 'Mocktail', 'Seasonal'].map(c =>
+              `<option value="${c}" ${existing && existing.category === c ? 'selected' : ''}>${c}</option>`
+            ).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-stone-700 mb-1">Harga Jual (Rp)</label>
+          <input id="rcpSell" type="number" value="${existing ? existing.sellingPrice : ''}" oninput="recalcRecipeModalSummary()"
+            class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-bold" />
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">+ Tambah Komposisi Bahan</label>
+        ${renderIngAutocompleteHtml('rcpAc', '', 'Ketik nama bahan untuk dimasukkan...')}
+      </div>
+      <div id="rcpDraftRows" class="space-y-1.5 max-h-40 overflow-y-auto"></div>
+      <div id="rcpModalSummary" class="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs space-y-1"></div>
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">Catatan / Langkah SOP Penyajian</label>
+        <textarea id="rcpNotes" rows="2" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs">${escHtml(existing ? existing.notes : '')}</textarea>
+      </div>
+      <button onclick="submitRecipeForm('${escHtml(editId)}')" class="w-full py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs">
+        💾 Simpan Resep &amp; HPP
+      </button>
+    </div>
+  `);
+  renderRecipeDraftRows();
+}
+
+function renderRecipeDraftRows() {
+  const box = document.getElementById('rcpDraftRows');
+  if (!box) return;
+  box.innerHTML = window._recipeDraftItems.map((it, idx) => `
+    <div class="flex items-center gap-1.5 p-2 rounded-xl bg-stone-50 border border-stone-200 text-xs">
+      <span class="flex-1 font-bold text-stone-800 truncate">${escHtml(it.name)}</span>
+      <input type="number" step="any" value="${it.qty || ''}" placeholder="0"
+        oninput="window._recipeDraftItems[${idx}].qty=Number(this.value)||0; recalcRecipeModalSummary();"
+        class="w-16 px-2 py-1 rounded-lg border border-amber-400 text-right font-bold text-xs" />
+      <span class="text-[10px] text-stone-500 w-9">${escHtml(it.unit)}</span>
+      <button type="button" onclick="window._recipeDraftItems.splice(${idx},1); renderRecipeDraftRows();" class="text-rose-600 font-bold px-1">✕</button>
+    </div>
+  `).join('');
+  recalcRecipeModalSummary();
+}
+
+function recalcRecipeModalSummary() {
+  const sumBox = document.getElementById('rcpModalSummary');
+  if (!sumBox) return;
+  const sellPrice = Number(document.getElementById('rcpSell')?.value) || 0;
+  const totalHpp = (window._recipeDraftItems || []).reduce((s, it) => s + ((Number(it.qty) || 0) * (Number(it.unitCost) || 0)), 0);
+  const profit = sellPrice - totalHpp;
+  const marginPct = sellPrice > 0 ? ((profit / sellPrice) * 100).toFixed(1) : '0.0';
+  sumBox.innerHTML = `
+    <div class="flex justify-between"><span class="text-stone-600">Total HPP:</span><b class="text-stone-900">${formatRp(totalHpp)}</b></div>
+    <div class="flex justify-between"><span class="text-stone-600">Gross Profit:</span><b class="${profit >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${formatRp(profit)} (${marginPct}%)</b></div>
+  `;
+}
+
+async function submitRecipeForm(editRecipeId) {
+  const name = (document.getElementById('rcpName')?.value || '').trim();
+  const category = document.getElementById('rcpCat')?.value || 'Signature';
+  const sellingPrice = Number(document.getElementById('rcpSell')?.value) || 0;
+  const notes = (document.getElementById('rcpNotes')?.value || '').trim();
+  const items = window._recipeDraftItems || [];
+  const hpp = items.reduce((s, it) => s + ((Number(it.qty) || 0) * (Number(it.unitCost) || 0)), 0);
+  const margin = sellingPrice > 0 ? (((sellingPrice - hpp) / sellingPrice) * 100) : 0;
+
+  if (!name) { showToast('Nama menu wajib diisi'); return; }
+  closeModal();
+
+  await postToBackend({
+    action: 'saveRecipe',
+    recipe: { id: editRecipeId || ('rcp_' + Date.now()), name, category, sellingPrice, ingredients: items, hpp, margin, notes }
+  }, `Resep ${name} disimpan!`);
+}
+
+async function deleteRecipeAction(recipeId) {
+  await postToBackend({ action: 'deleteRecipe', recipeId }, 'Resep dihapus');
+}
+
+// ==================== ROUTER & INIT ====================
+function switchTab(tab) {
+  STATE.activeTab = tab;
   renderCurrentTab();
-  if (STATE.apiUrl) syncAllData(false);
+}
+
+function renderCurrentTab() {
+  document.querySelectorAll('[data-nav-tab]').forEach(btn => {
+    const active = btn.getAttribute('data-nav-tab') === STATE.activeTab;
+    btn.className = active
+      ? 'flex flex-col items-center justify-center py-1.5 text-amber-600 font-extrabold text-[10px]'
+      : 'flex flex-col items-center justify-center py-1.5 text-stone-500 font-semibold text-[10px]';
+  });
+
+  const main = document.getElementById('mainContent') || document.getElementById('app');
+  if (!main) return;
+
+  if (STATE.activeTab === 'home') renderHomeTab(main);
+  else if (STATE.activeTab === 'daily' && typeof renderDailyTab === 'function') renderDailyTab(main);
+  else if (STATE.activeTab === 'monthly' && typeof renderMonthlyTab === 'function') renderMonthlyTab(main);
+  else if (STATE.activeTab === 'po' && typeof renderPoVendorTab === 'function') renderPoVendorTab(main);
+  else if (STATE.activeTab === 'master') renderMasterTab(main);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  loadCacheFromLocal();
+  renderCurrentTab();
+  loadAllData(true);
 });
