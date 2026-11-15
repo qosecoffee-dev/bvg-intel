@@ -1,5 +1,13 @@
 // ==================== CORE STATE & CONFIG ====================
-const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwfTS8e89ttxIhv9ZmJ9zqm000IMTs1mzB_cTLIPO6L68WaotWHQQScmPJsUGgjqWo/exec';
+const EXACT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwftS8e89ttxlhv9ZmJ9zqm000lMTs1mzB_cTLiPO6L68WaotWHQQScmPJsUGgjqjWo/exec';
+
+// Pastikan URL di localStorage selalu sinkron dengan URL deployment aktif
+(function initApiUrl() {
+  const saved = localStorage.getItem('bvg_intel_api_url') || localStorage.getItem('qose_gas_url') || '';
+  if (!saved || saved.includes('AKfycbwfTS8e89')) {
+    localStorage.setItem('bvg_intel_api_url', EXACT_GAS_URL);
+  }
+})();
 
 function getLocalTodayStr() {
   const now = new Date();
@@ -9,9 +17,24 @@ function getLocalTodayStr() {
   return `${y}-${m}-${d}`;
 }
 
+function getFormattedNowId() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+
+const savedSyncMeta = (() => {
+  try {
+    return JSON.parse(localStorage.getItem('bvg_last_sync_meta') || 'null') || { time: '-', ok: null, msg: 'Belum pernah sync' };
+  } catch (e) {
+    return { time: '-', ok: null, msg: 'Belum pernah sync' };
+  }
+})();
+
 const STATE = {
-  gasUrl: localStorage.getItem('qose_gas_url') || DEFAULT_GAS_URL,
+  gasUrl: localStorage.getItem('bvg_intel_api_url') || EXACT_GAS_URL,
   activeTab: 'home',
+  parSubTab: 'monthly',
   masterSubTab: 'ingredients',
   poSubTab: 'po',
   selectedDate: getLocalTodayStr(),
@@ -26,11 +49,15 @@ const STATE = {
   dailyCatFilter: 'ALL',
   monthlySearch: '',
   monthlyCatFilter: 'ALL',
+  parSearch: '',
   menuEngMonth: String(new Date().getMonth() + 1).padStart(2, '0'),
   menuEngYear: String(new Date().getFullYear()),
   menuEngCat: 'ALL',
   menuEngQuad: 'ALL',
   selectedPic: localStorage.getItem('qose_last_pic') || '',
+  lastSyncTime: savedSyncMeta.time,
+  lastSyncOk: savedSyncMeta.ok,
+  lastSyncMsg: savedSyncMeta.msg,
   ingredients: [],
   recipes: [],
   invDaily: [],
@@ -40,6 +67,7 @@ const STATE = {
   teamBar: [],
   draftDaily: {},
   draftMonthly: {},
+  draftPar: {},
   isLoading: false
 };
 
@@ -65,59 +93,105 @@ function escHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+const escapeHtml = escHtml;
 
 function formatNum(val) {
   const n = Number(val);
   if (isNaN(n)) return '0';
   return n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
 }
+const formatNumber = formatNum;
 
 function formatRp(val) {
   const n = Math.round(Number(val) || 0);
   return 'Rp ' + n.toLocaleString('id-ID');
 }
+const formatCurrency = formatRp;
 
 function showToast(msg, duration = 2600) {
+  const box = document.getElementById('toastBox');
+  if (box) {
+    box.textContent = msg;
+    box.classList.remove('hidden');
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => {
+      box.classList.add('hidden');
+    }, duration);
+    return;
+  }
   let el = document.getElementById('globalToast');
   if (!el) {
     el = document.createElement('div');
     el.id = 'globalToast';
-    el.className = 'fixed bottom-20 left-1/2 -translate-x-1/2 z-[999] px-4 py-2.5 rounded-2xl bg-stone-900 text-white text-xs font-bold shadow-lg transition-opacity duration-200 pointer-events-none max-w-[90vw] text-center';
+    el.className = 'fixed top-16 left-1/2 -translate-x-1/2 z-[999] px-4 py-2 rounded-full bg-stone-900 text-white text-xs font-semibold shadow-lg pointer-events-none';
     document.body.appendChild(el);
   }
   el.textContent = msg;
-  el.style.opacity = '1';
+  el.style.display = 'block';
   clearTimeout(window._toastTimer);
   window._toastTimer = setTimeout(() => {
-    el.style.opacity = '0';
+    el.style.display = 'none';
   }, duration);
 }
 
 function openModal(title, bodyHtml) {
-  closeModal();
-  const wrap = document.createElement('div');
-  wrap.id = 'globalModal';
-  wrap.className = 'fixed inset-0 z-[900] bg-black/50 backdrop-blur-[1px] flex items-end sm:items-center justify-center p-3';
-  wrap.innerHTML = `
-    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-stone-200 overflow-hidden max-h-[88vh] flex flex-col">
-      <div class="px-4 py-3.5 border-b border-stone-200 flex items-center justify-between bg-stone-50">
-        <h3 class="text-sm font-extrabold text-stone-900">${escHtml(title)}</h3>
-        <button type="button" onclick="closeModal()" class="w-8 h-8 rounded-full bg-stone-200 text-stone-700 font-bold text-xs flex items-center justify-center">✕</button>
-      </div>
-      <div class="p-4 overflow-y-auto space-y-3">
-        ${bodyHtml}
-      </div>
-    </div>
-  `;
-  wrap.addEventListener('click', (e) => {
-    if (e.target === wrap) closeModal();
-  });
-  document.body.appendChild(wrap);
+  const overlay = document.getElementById('modalOverlay');
+  const titleEl = document.getElementById('modalTitle');
+  const bodyEl = document.getElementById('modalBody');
+  if (overlay && titleEl && bodyEl) {
+    titleEl.textContent = title;
+    bodyEl.innerHTML = bodyHtml;
+    overlay.classList.remove('hidden');
+    overlay.classList.add('flex');
+    return;
+  }
 }
 
 function closeModal() {
-  const existing = document.getElementById('globalModal');
-  if (existing) existing.remove();
+  const overlay = document.getElementById('modalOverlay');
+  if (overlay) {
+    overlay.classList.add('hidden');
+    overlay.classList.remove('flex');
+  }
+}
+
+function openSettingsModal() {
+  openModal('⚙️ Pengaturan Koneksi Google Sheets', `
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-bold text-stone-700 mb-1">URL Web App Google Apps Script</label>
+        <textarea id="settingsGasUrl" rows="3" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-mono">${escHtml(STATE.gasUrl)}</textarea>
+      </div>
+      <div class="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-[11px] text-stone-600">
+        <b>Status Terakhir:</b> ${escHtml(STATE.lastSyncMsg)} (${escHtml(STATE.lastSyncTime)})
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <button type="button" onclick="resetDefaultGasUrl()" class="py-2.5 rounded-xl bg-stone-200 text-stone-800 font-bold text-xs">
+          Reset Default
+        </button>
+        <button type="button" onclick="saveSettingsGasUrl()" class="py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs">
+          Simpan &amp; Sync
+        </button>
+      </div>
+    </div>
+  `);
+}
+
+function resetDefaultGasUrl() {
+  const el = document.getElementById('settingsGasUrl');
+  if (el) el.value = EXACT_GAS_URL;
+}
+
+async function saveSettingsGasUrl() {
+  const val = (document.getElementById('settingsGasUrl')?.value || '').trim();
+  if (!val.startsWith('https://script.google.com/')) {
+    showToast('URL harus berawalan https://script.google.com/');
+    return;
+  }
+  STATE.gasUrl = val;
+  localStorage.setItem('bvg_intel_api_url', val);
+  closeModal();
+  await syncAllData(true);
 }
 
 // ==================== PIC & 4-DIGIT PIN COMPONENT ====================
@@ -371,11 +445,12 @@ function normalizeRecipe(raw, idx = 0) {
     salesByMonth: raw.salesByMonth || {}
   };
 }
+const getNormalizedRecipes = () => STATE.recipes.map(normalizeRecipe);
 
 // ==================== API SYNC & BACKEND POST ====================
 function saveCacheToLocal() {
   try {
-    localStorage.setItem('qose_inv_cache_v2', JSON.stringify({
+    localStorage.setItem('qose_inv_cache_v3', JSON.stringify({
       ingredients: STATE.ingredients,
       recipes: STATE.recipes,
       invDaily: STATE.invDaily,
@@ -389,7 +464,7 @@ function saveCacheToLocal() {
 
 function loadCacheFromLocal() {
   try {
-    const raw = JSON.parse(localStorage.getItem('qose_inv_cache_v2') || 'null');
+    const raw = JSON.parse(localStorage.getItem('qose_inv_cache_v3') || 'null');
     if (!raw) return false;
     STATE.ingredients = raw.ingredients || [];
     STATE.recipes = raw.recipes || [];
@@ -404,12 +479,33 @@ function loadCacheFromLocal() {
   }
 }
 
+function updateSyncIndicator(loading, okState = null) {
+  const btn = document.getElementById('syncStatusBadge');
+  if (!btn) return;
+  if (loading) {
+    btn.textContent = '↻ Syncing...';
+    btn.className = 'text-[11px] px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold';
+    btn.disabled = true;
+    return;
+  }
+  btn.disabled = false;
+  if (okState === false) {
+    btn.textContent = '● Gagal Sync';
+    btn.className = 'text-[11px] px-2.5 py-1 rounded-full bg-rose-600/25 text-rose-300 border border-rose-500/40 font-semibold active:scale-95';
+  } else {
+    btn.textContent = '● Synced';
+    btn.className = 'text-[11px] px-2.5 py-1 rounded-full bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 font-semibold active:scale-95';
+  }
+}
+
 async function loadAllData(silent = false) {
-  if (!STATE.gasUrl) return;
+  const url = STATE.gasUrl || EXACT_GAS_URL;
   STATE.isLoading = true;
   updateSyncIndicator(true);
+  const nowStr = getFormattedNowId();
+
   try {
-    const res = await fetch(`${STATE.gasUrl}?t=${Date.now()}`);
+    const res = await fetch(`${url}?t=${Date.now()}`, { redirect: 'follow' });
     const data = await res.json();
     if (data.status === 'ok') {
       STATE.ingredients = data.ingredients || [];
@@ -419,36 +515,52 @@ async function loadAllData(silent = false) {
       STATE.purchaseOrders = data.purchaseOrders || [];
       STATE.vendors = data.vendors || [];
       STATE.teamBar = data.teamBar || [];
+      STATE.lastSyncTime = nowStr;
+      STATE.lastSyncOk = true;
+      STATE.lastSyncMsg = `Berhasil (${STATE.ingredients.length} bahan, ${STATE.teamBar.length} PIC)`;
+      localStorage.setItem('bvg_last_sync_meta', JSON.stringify({ time: nowStr, ok: true, msg: STATE.lastSyncMsg }));
       saveCacheToLocal();
-      if (!silent) showToast('Data tersinkronisasi');
+      updateSyncIndicator(false, true);
+      if (!silent) showToast(`✅ Sync berhasil (${STATE.ingredients.length} bahan)`);
     } else {
-      if (!silent) showToast('Gagal sync: ' + (data.message || 'Error'));
+      STATE.lastSyncTime = nowStr;
+      STATE.lastSyncOk = false;
+      STATE.lastSyncMsg = 'Gagal: ' + (data.message || 'Error server');
+      localStorage.setItem('bvg_last_sync_meta', JSON.stringify({ time: nowStr, ok: false, msg: STATE.lastSyncMsg }));
+      updateSyncIndicator(false, false);
+      if (!silent) showToast('❌ ' + STATE.lastSyncMsg);
     }
   } catch (err) {
-    if (!silent) showToast('Mode offline / gagal terhubung ke Sheets');
+    STATE.lastSyncTime = nowStr;
+    STATE.lastSyncOk = false;
+    STATE.lastSyncMsg = 'Gagal terhubung ke Google Sheets';
+    localStorage.setItem('bvg_last_sync_meta', JSON.stringify({ time: nowStr, ok: false, msg: STATE.lastSyncMsg }));
+    updateSyncIndicator(false, false);
+    if (!silent) showToast('❌ Gagal terhubung ke Google Sheets');
   } finally {
     STATE.isLoading = false;
-    updateSyncIndicator(false);
     renderCurrentTab();
   }
 }
 
+function syncAllData(showNotice = true) {
+  return loadAllData(!showNotice);
+}
+
 async function postToBackend(payload, successMsg = 'Tersimpan!', silent = false) {
-  if (!STATE.gasUrl) {
-    showToast('URL Apps Script belum diatur');
-    return false;
-  }
+  const url = STATE.gasUrl || EXACT_GAS_URL;
   updateSyncIndicator(true);
   try {
-    const res = await fetch(STATE.gasUrl, {
+    const res = await fetch(url, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (data.status !== 'ok') {
       showToast('❌ ' + (data.message || 'Gagal menyimpan data'), 3500);
-      updateSyncIndicator(false);
+      updateSyncIndicator(false, false);
       return false;
     }
     await loadAllData(true);
@@ -456,16 +568,9 @@ async function postToBackend(payload, successMsg = 'Tersimpan!', silent = false)
     return true;
   } catch (err) {
     showToast('❌ Koneksi gagal: ' + err.message, 3200);
-    updateSyncIndicator(false);
+    updateSyncIndicator(false, false);
     return false;
   }
-}
-
-function updateSyncIndicator(loading) {
-  const btn = document.getElementById('syncHeaderBtn');
-  if (!btn) return;
-  btn.textContent = loading ? '↻ Sync...' : '🔄 Sync';
-  btn.disabled = loading;
 }
 
 // ==================== HOME DASHBOARD TAB ====================
@@ -492,21 +597,35 @@ function renderHomeTab(main) {
   });
 
   const isOverLimit = totalValueSo > 20000000;
+  const syncBadgeClass = STATE.lastSyncOk === true
+    ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
+    : (STATE.lastSyncOk === false ? 'bg-rose-500/20 border-rose-400/30 text-rose-300' : 'bg-white/10 border-white/15 text-stone-300');
+  const syncIcon = STATE.lastSyncOk === true ? '✅' : (STATE.lastSyncOk === false ? '❌' : '⏳');
 
-  // Log aktivitas PIC terbaru dari Daily Inventory
   const recentLogs = [...STATE.invDaily]
     .filter(r => r.picName)
     .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)))
-    .slice(0, 4);
+    .slice(0, 5);
 
   main.innerHTML = `
     <section class="bg-stone-900 text-white p-4 rounded-3xl shadow-md mb-3 space-y-3">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-2">
         <div>
           <span class="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Qose Coffee • Bar Control</span>
           <h2 class="text-base font-extrabold">Ringkasan Periode ${curMonth}</h2>
         </div>
-        <span class="px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-bold">${STATE.teamBar.length} PIC Aktif</span>
+        <span class="px-2.5 py-1 rounded-full bg-white/10 text-[10px] font-bold shrink-0">${STATE.teamBar.length} PIC • ${STATE.ingredients.length} Bahan</span>
+      </div>
+
+      <!-- Status Sinkronisasi Tanggal & Jam -->
+      <div class="p-2.5 rounded-2xl border ${syncBadgeClass} flex items-center justify-between gap-2">
+        <div class="text-[11px]">
+          <p class="font-bold">${syncIcon} Sync: ${escHtml(STATE.lastSyncMsg)}</p>
+          <p class="text-[10px] opacity-80">Waktu: ${escHtml(STATE.lastSyncTime)}</p>
+        </div>
+        <button onclick="syncAllData(true)" class="px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-[10px] font-bold shrink-0 active:scale-95">
+          🔄 Sync
+        </button>
       </div>
 
       <div class="p-3 rounded-2xl bg-white/10 border border-white/10">
@@ -543,7 +662,7 @@ function renderHomeTab(main) {
       ${lowStockList.length === 0 ? `
         <p class="text-[11px] text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl font-semibold">✓ Semua stok bahan baku aman di atas batas minimum.</p>
       ` : `
-        <div class="space-y-1.5 max-h-48 overflow-y-auto">
+        <div class="space-y-1.5 max-h-52 overflow-y-auto">
           ${lowStockList.map(item => `
             <div class="flex items-center justify-between p-2 rounded-xl bg-rose-50 border border-rose-200 text-xs">
               <div>
@@ -580,6 +699,102 @@ function renderHomeTab(main) {
       `}
     </section>
   `;
+}
+
+// ==================== GABUNGAN REKAP BULANAN, SO & PAR STOCK TAB ====================
+function renderParStockAndMonthlyTab(main) {
+  const isMonthly = STATE.parSubTab !== 'par';
+
+  if (isMonthly && typeof renderMonthlyTab === 'function') {
+    renderMonthlyTab(main);
+    const switcher = document.createElement('div');
+    switcher.className = 'grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3';
+    switcher.innerHTML = `
+      <button onclick="STATE.parSubTab='monthly'; renderCurrentTab();"
+        class="py-2 rounded-lg text-xs font-bold bg-white text-stone-900 shadow-sm">
+        📊 Rekap Bulanan &amp; SO
+      </button>
+      <button onclick="STATE.parSubTab='par'; renderCurrentTab();"
+        class="py-2 rounded-lg text-xs font-bold text-stone-600">
+        ⚠️ Batas Par Stock
+      </button>
+    `;
+    main.insertBefore(switcher, main.firstChild);
+    return;
+  }
+
+  // Sub-tab Atur Batas Par Stock (Min Stock)
+  const sorted = getSortedIngredients();
+  const q = String(STATE.parSearch || '').trim().toLowerCase();
+  const filtered = sorted.filter(ing => !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q));
+  const curMonth = getLocalTodayStr().slice(0, 7);
+  const mMap = getMonthlySummaryMap(curMonth);
+
+  main.innerHTML = `
+    <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3">
+      <button onclick="STATE.parSubTab='monthly'; renderCurrentTab();"
+        class="py-2 rounded-lg text-xs font-bold text-stone-600">
+        📊 Rekap Bulanan &amp; SO
+      </button>
+      <button onclick="STATE.parSubTab='par'; renderCurrentTab();"
+        class="py-2 rounded-lg text-xs font-bold bg-white text-stone-900 shadow-sm">
+        ⚠️ Batas Par Stock
+      </button>
+    </div>
+
+    <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
+      <div class="flex items-center justify-between">
+        <div>
+          <h2 class="text-sm font-extrabold text-stone-900">⚠️ Pengaturan Batas Par Stock</h2>
+          <p class="text-[11px] text-stone-500">Alert muncul otomatis jika sisa CL &le; Min Stock</p>
+        </div>
+        <button onclick="downloadParStockPdf()" class="px-2.5 py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold">
+          📄 PDF
+        </button>
+      </div>
+      <input type="text" value="${escHtml(STATE.parSearch)}" oninput="STATE.parSearch=this.value; renderCurrentTab();"
+        placeholder="Cari nama bahan baku..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+    </section>
+
+    <section class="space-y-2 mb-3">
+      ${filtered.map(ing => {
+        const curCl = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
+        const val = STATE.draftPar[ing.id] !== undefined ? STATE.draftPar[ing.id] : (Number(ing.minStock) || 0);
+        const isLow = val > 0 && curCl <= val;
+        return `
+          <div class="bg-white p-3 rounded-2xl shadow-sm border ${isLow ? 'border-rose-300 bg-rose-50/30' : 'border-stone-200'} flex items-center justify-between gap-2">
+            <div>
+              <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-bold">${escHtml(ing.subCategory)}</span>
+              <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(ing.name)}</h3>
+              <p class="text-[11px] ${isLow ? 'text-rose-700 font-bold' : 'text-stone-500'}">
+                Sisa Bulan Ini: ${formatNum(curCl)} ${escHtml(ing.unit)}
+              </p>
+            </div>
+            <div class="w-24 shrink-0">
+              <label class="block text-[9px] font-bold text-stone-500 text-right mb-0.5">Min (${escHtml(ing.unit)})</label>
+              <input type="number" step="any" value="${val}"
+                oninput="STATE.draftPar['${escHtml(ing.id)}']=Number(this.value)||0;"
+                class="w-full px-2 py-1.5 rounded-xl border border-amber-400 text-xs font-extrabold text-right bg-white" />
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </section>
+
+    <button onclick="submitParStockUpdates()" class="w-full py-3 rounded-2xl bg-amber-600 text-white font-extrabold text-xs shadow-md">
+      💾 Simpan Batas Par Stock
+    </button>
+  `;
+}
+
+async function submitParStockUpdates() {
+  const updates = Object.keys(STATE.draftPar).map(id => ({ id, minStock: STATE.draftPar[id] }));
+  if (updates.length === 0) {
+    showToast('Belum ada angka Par Stock yang diubah');
+    return;
+  }
+  const ok = await postToBackend({ action: 'saveParStock', updates }, 'Batas Par Stock diperbarui!');
+  if (ok) STATE.draftPar = {};
 }
 
 // ==================== MASTER & RECIPES TAB ====================
@@ -779,6 +994,9 @@ function renderMasterRecipesHtml() {
     </section>
   `;
 }
+const renderRecipesHtml = renderMasterRecipesHtml;
+const renderMasterRecipesTab = renderMasterRecipesHtml;
+const renderRecipesSubTab = renderMasterRecipesHtml;
 
 function openRecipeModal(editId = '') {
   const existing = editId ? normalizeRecipe(STATE.recipes.find(x => String(x.id) === String(editId)) || {}) : null;
@@ -888,19 +1106,19 @@ function switchTab(tab) {
 }
 
 function renderCurrentTab() {
-  document.querySelectorAll('[data-nav-tab]').forEach(btn => {
-    const active = btn.getAttribute('data-nav-tab') === STATE.activeTab;
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    const active = btn.getAttribute('data-tab') === STATE.activeTab;
     btn.className = active
-      ? 'flex flex-col items-center justify-center py-1.5 text-amber-600 font-extrabold text-[10px]'
-      : 'flex flex-col items-center justify-center py-1.5 text-stone-500 font-semibold text-[10px]';
+      ? 'nav-btn flex flex-col items-center py-1 rounded-lg text-amber-700 font-bold'
+      : 'nav-btn flex flex-col items-center py-1 rounded-lg text-stone-500';
   });
 
-  const main = document.getElementById('mainContent') || document.getElementById('app');
+  const main = document.getElementById('mainContent');
   if (!main) return;
 
   if (STATE.activeTab === 'home') renderHomeTab(main);
   else if (STATE.activeTab === 'daily' && typeof renderDailyTab === 'function') renderDailyTab(main);
-  else if (STATE.activeTab === 'monthly' && typeof renderMonthlyTab === 'function') renderMonthlyTab(main);
+  else if (STATE.activeTab === 'parstock' || STATE.activeTab === 'monthly') renderParStockAndMonthlyTab(main);
   else if (STATE.activeTab === 'po' && typeof renderPoVendorTab === 'function') renderPoVendorTab(main);
   else if (STATE.activeTab === 'master') renderMasterTab(main);
 }
@@ -908,5 +1126,5 @@ function renderCurrentTab() {
 window.addEventListener('DOMContentLoaded', () => {
   loadCacheFromLocal();
   renderCurrentTab();
-  loadAllData(true);
+  loadAllData(false);
 });
