@@ -77,6 +77,7 @@ const STATE = {
   masterSubTab: 'ingredients',
   poSubTab: 'po',
   selectedDate: getLocalTodayStr(),
+  homeLogDate: getLocalTodayStr(),
   poDate: getLocalTodayStr(),
   poSearch: '',
   vendorSearch: '',
@@ -623,6 +624,81 @@ function togglePicLogCard(idx) {
   }
 }
 
+function renderPicLogsListHtml() {
+  const targetDate = String(STATE.homeLogDate || getLocalTodayStr()).slice(0, 10);
+
+  // Filter berdasarkan tanggal yang dipilih lalu kelompokkan per Nama PIC
+  const filteredLogs = STATE.invDaily
+    .filter(r => String(r.picName || '').trim() !== '' && String(r.date || '').slice(0, 10) === targetDate)
+    .sort((a, b) => parseLogTimestamp(b.updatedAt || b.date) - parseLogTimestamp(a.updatedAt || a.date));
+
+  const picGroupsMap = new Map();
+  filteredLogs.forEach(log => {
+    const rawName = String(log.picName || '').trim();
+    const key = rawName.toLowerCase();
+    if (!picGroupsMap.has(key)) {
+      picGroupsMap.set(key, {
+        picName: rawName,
+        latestTimeRaw: log.updatedAt || log.date,
+        items: []
+      });
+    }
+    picGroupsMap.get(key).items.push(log);
+  });
+  const picGroups = Array.from(picGroupsMap.values());
+
+  if (picGroups.length === 0) {
+    return `<p class="text-[11px] text-stone-400 bg-stone-50 px-3 py-2.5 rounded-xl">Tidak ada catatan input PIC pada tanggal <b>${escHtml(targetDate)}</b>.</p>`;
+  }
+
+  return `
+    <div class="space-y-1.5">
+      ${picGroups.map((grp, idx) => {
+        const initial = grp.picName.charAt(0).toUpperCase();
+        return `
+          <div class="rounded-xl bg-stone-50 border border-stone-200/80 overflow-hidden">
+            <button type="button" onclick="togglePicLogCard(${idx})"
+              class="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left active:bg-stone-100">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-6 h-6 rounded-full bg-stone-900 text-amber-300 text-[10px] font-extrabold flex items-center justify-center shrink-0">
+                  ${escHtml(initial)}
+                </span>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <b class="text-xs text-stone-900 truncate">${escHtml(grp.picName)}</b>
+                    <span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[9px] font-bold shrink-0">
+                      ${grp.items.length} bahan
+                    </span>
+                  </div>
+                  <p class="text-[9px] text-stone-400">Ketuk untuk lihat rincian</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span class="text-[10px] font-semibold text-stone-500">${escHtml(formatShortLogTime(grp.latestTimeRaw))}</span>
+                <span id="picLogArrow_${idx}" class="text-[10px] text-stone-400 transition-transform duration-150">▼</span>
+              </div>
+            </button>
+
+            <div id="picLogDetail_${idx}" class="hidden px-2.5 pb-2 pt-1.5 border-t border-stone-200/70 bg-white space-y-1 max-h-44 overflow-y-auto">
+              ${grp.items.map(item => `
+                <div class="flex items-center justify-between gap-2 text-[10px] py-1 border-b border-stone-100 last:border-b-0">
+                  <div class="min-w-0">
+                    <span class="font-bold text-stone-800 block truncate">${escHtml(item.ingName)}</span>
+                    <span class="text-[9px] text-stone-400">${escHtml(formatShortLogTime(item.updatedAt))}</span>
+                  </div>
+                  <span class="text-[9px] font-semibold text-stone-600 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">
+                    IN ${formatNum(item.inQty)} • OUT ${formatNum(item.outQty)} • Wst ${formatNum(item.wasteQty)}
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderHomeTab(main) {
   const curMonth = getLocalTodayStr().slice(0, 7);
   const mMap = getMonthlySummaryMap(curMonth);
@@ -650,27 +726,6 @@ function renderHomeTab(main) {
     ? 'bg-emerald-500/15 border-emerald-400/30 text-emerald-300'
     : (STATE.lastSyncOk === false ? 'bg-rose-500/20 border-rose-400/30 text-rose-300' : 'bg-white/10 border-white/15 text-stone-300');
   const syncIcon = STATE.lastSyncOk === true ? '✅' : (STATE.lastSyncOk === false ? '❌' : '⏳');
-
-  // Kelompokkan riwayat input berdasarkan Nama PIC yang sama (bertumpuk & bisa diklik)
-  const sortedLogs = [...STATE.invDaily]
-    .filter(r => String(r.picName || '').trim() !== '')
-    .sort((a, b) => parseLogTimestamp(b.updatedAt || b.date) - parseLogTimestamp(a.updatedAt || a.date));
-
-  const picGroupsMap = new Map();
-  sortedLogs.forEach(log => {
-    const rawName = String(log.picName || '').trim();
-    const key = rawName.toLowerCase();
-    if (!picGroupsMap.has(key)) {
-      picGroupsMap.set(key, {
-        picName: rawName,
-        latestTimeRaw: log.updatedAt || log.date,
-        latestDate: log.date || '',
-        items: []
-      });
-    }
-    picGroupsMap.get(key).items.push(log);
-  });
-  const picGroups = Array.from(picGroupsMap.values());
 
   main.innerHTML = `
     <section class="bg-stone-900 text-white p-4 rounded-3xl shadow-md mb-3 space-y-3">
@@ -744,63 +799,17 @@ function renderHomeTab(main) {
       `}
     </section>
 
-    <!-- Jejak Input Terakhir PIC (Tumpuk per Nama & Dapat Diketuk) -->
+    <!-- Jejak Input Terakhir PIC (Filter Tanggal + Tumpuk per Nama) -->
     <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-      <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center justify-between gap-2 mb-2.5">
         <h3 class="text-xs font-extrabold text-stone-900">🕵️ Jejak Penginput Terakhir</h3>
-        ${picGroups.length > 0 ? `<span class="text-[10px] text-stone-400">Ketuk nama untuk detail</span>` : ''}
+        <input type="date" value="${escHtml(STATE.homeLogDate)}"
+          onchange="STATE.homeLogDate=this.value || getLocalTodayStr(); const box=document.getElementById('picLogsListContainer'); if(box) box.innerHTML=renderPicLogsListHtml();"
+          class="px-2.5 py-1 rounded-xl border border-stone-300 bg-stone-50 text-[11px] font-bold text-stone-800 focus:border-amber-600 focus:outline-none" />
       </div>
-      ${picGroups.length === 0 ? `
-        <p class="text-[11px] text-stone-400">Belum ada riwayat input PIC tercatat.</p>
-      ` : `
-        <div class="space-y-1.5">
-          ${picGroups.map((grp, idx) => {
-            const latestBatchItems = grp.latestDate
-              ? grp.items.filter(x => x.date === grp.latestDate)
-              : grp.items;
-            const initial = grp.picName.charAt(0).toUpperCase();
-            return `
-              <div class="rounded-xl bg-stone-50 border border-stone-200/80 overflow-hidden">
-                <button type="button" onclick="togglePicLogCard(${idx})"
-                  class="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left active:bg-stone-100">
-                  <div class="flex items-center gap-2 min-w-0">
-                    <span class="w-6 h-6 rounded-full bg-stone-900 text-amber-300 text-[10px] font-extrabold flex items-center justify-center shrink-0">
-                      ${escHtml(initial)}
-                    </span>
-                    <div class="min-w-0">
-                      <div class="flex items-center gap-1.5">
-                        <b class="text-xs text-stone-900 truncate">${escHtml(grp.picName)}</b>
-                        <span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[9px] font-bold shrink-0">
-                          ${latestBatchItems.length} bahan
-                        </span>
-                      </div>
-                      ${grp.latestDate ? `<p class="text-[9px] text-stone-400">Stok tgl ${escHtml(grp.latestDate)}</p>` : ''}
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-1.5 shrink-0">
-                    <span class="text-[10px] font-semibold text-stone-500">${escHtml(formatShortLogTime(grp.latestTimeRaw))}</span>
-                    <span id="picLogArrow_${idx}" class="text-[10px] text-stone-400 transition-transform duration-150">▼</span>
-                  </div>
-                </button>
-
-                <div id="picLogDetail_${idx}" class="hidden px-2.5 pb-2 pt-1.5 border-t border-stone-200/70 bg-white space-y-1 max-h-44 overflow-y-auto">
-                  ${grp.items.slice(0, 30).map(item => `
-                    <div class="flex items-center justify-between gap-2 text-[10px] py-1 border-b border-stone-100 last:border-b-0">
-                      <div class="min-w-0">
-                        <span class="font-bold text-stone-800 block truncate">${escHtml(item.ingName)}</span>
-                        <span class="text-[9px] text-stone-400">${escHtml(item.date)} • ${escHtml(formatShortLogTime(item.updatedAt))}</span>
-                      </div>
-                      <span class="text-[9px] font-semibold text-stone-600 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">
-                        IN ${formatNum(item.inQty)} • OUT ${formatNum(item.outQty)} • Wst ${formatNum(item.wasteQty)}
-                      </span>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `}
+      <div id="picLogsListContainer">
+        ${renderPicLogsListHtml()}
+      </div>
     </section>
   `;
 }
