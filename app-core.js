@@ -23,6 +23,45 @@ function getFormattedNowId() {
   return `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
+function parseLogTimestamp(val) {
+  if (!val) return 0;
+  const s = String(val).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) {
+    return new Date(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(m[4] || 0),
+      Number(m[5] || 0),
+      Number(m[6] || 0)
+    ).getTime();
+  }
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function formatShortLogTime(val) {
+  if (!val) return '-';
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const s = String(val).trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+  if (m) {
+    const day = Number(m[3]);
+    const mon = months[Number(m[2]) - 1] || m[2];
+    return m[4] ? `${day} ${mon} • ${m[4]}:${m[5]}` : `${day} ${mon}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    const day = d.getDate();
+    const mon = months[d.getMonth()];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return `${day} ${mon} • ${hh}:${mm}`;
+  }
+  return s.slice(0, 16);
+}
+
 const savedSyncMeta = (() => {
   try {
     return JSON.parse(localStorage.getItem('bvg_last_sync_meta') || 'null') || { time: '-', ok: null, msg: 'Belum pernah sync' };
@@ -574,6 +613,16 @@ async function postToBackend(payload, successMsg = 'Tersimpan!', silent = false)
 }
 
 // ==================== HOME DASHBOARD TAB ====================
+function togglePicLogCard(idx) {
+  const detailEl = document.getElementById(`picLogDetail_${idx}`);
+  const arrowEl = document.getElementById(`picLogArrow_${idx}`);
+  if (!detailEl) return;
+  const isHidden = detailEl.classList.toggle('hidden');
+  if (arrowEl) {
+    arrowEl.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+  }
+}
+
 function renderHomeTab(main) {
   const curMonth = getLocalTodayStr().slice(0, 7);
   const mMap = getMonthlySummaryMap(curMonth);
@@ -602,10 +651,26 @@ function renderHomeTab(main) {
     : (STATE.lastSyncOk === false ? 'bg-rose-500/20 border-rose-400/30 text-rose-300' : 'bg-white/10 border-white/15 text-stone-300');
   const syncIcon = STATE.lastSyncOk === true ? '✅' : (STATE.lastSyncOk === false ? '❌' : '⏳');
 
-  const recentLogs = [...STATE.invDaily]
-    .filter(r => r.picName)
-    .sort((a, b) => String(b.updatedAt || b.date).localeCompare(String(a.updatedAt || a.date)))
-    .slice(0, 5);
+  // Kelompokkan riwayat input berdasarkan Nama PIC yang sama (bertumpuk & bisa diklik)
+  const sortedLogs = [...STATE.invDaily]
+    .filter(r => String(r.picName || '').trim() !== '')
+    .sort((a, b) => parseLogTimestamp(b.updatedAt || b.date) - parseLogTimestamp(a.updatedAt || a.date));
+
+  const picGroupsMap = new Map();
+  sortedLogs.forEach(log => {
+    const rawName = String(log.picName || '').trim();
+    const key = rawName.toLowerCase();
+    if (!picGroupsMap.has(key)) {
+      picGroupsMap.set(key, {
+        picName: rawName,
+        latestTimeRaw: log.updatedAt || log.date,
+        latestDate: log.date || '',
+        items: []
+      });
+    }
+    picGroupsMap.get(key).items.push(log);
+  });
+  const picGroups = Array.from(picGroupsMap.values());
 
   main.innerHTML = `
     <section class="bg-stone-900 text-white p-4 rounded-3xl shadow-md mb-3 space-y-3">
@@ -679,22 +744,61 @@ function renderHomeTab(main) {
       `}
     </section>
 
-    <!-- Jejak Input Terakhir PIC -->
+    <!-- Jejak Input Terakhir PIC (Tumpuk per Nama & Dapat Diketuk) -->
     <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-      <h3 class="text-xs font-extrabold text-stone-900 mb-2">🕵️ Jejak Penginput Terakhir</h3>
-      ${recentLogs.length === 0 ? `
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-xs font-extrabold text-stone-900">🕵️ Jejak Penginput Terakhir</h3>
+        ${picGroups.length > 0 ? `<span class="text-[10px] text-stone-400">Ketuk nama untuk detail</span>` : ''}
+      </div>
+      ${picGroups.length === 0 ? `
         <p class="text-[11px] text-stone-400">Belum ada riwayat input PIC tercatat.</p>
       ` : `
         <div class="space-y-1.5">
-          ${recentLogs.map(log => `
-            <div class="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-xl bg-stone-50 border border-stone-100">
-              <div>
-                <b class="text-stone-900">${escHtml(log.picName)}</b>
-                <span class="text-stone-500"> • ${escHtml(log.ingName)}</span>
+          ${picGroups.map((grp, idx) => {
+            const latestBatchItems = grp.latestDate
+              ? grp.items.filter(x => x.date === grp.latestDate)
+              : grp.items;
+            const initial = grp.picName.charAt(0).toUpperCase();
+            return `
+              <div class="rounded-xl bg-stone-50 border border-stone-200/80 overflow-hidden">
+                <button type="button" onclick="togglePicLogCard(${idx})"
+                  class="w-full flex items-center justify-between gap-2 px-2.5 py-2 text-left active:bg-stone-100">
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="w-6 h-6 rounded-full bg-stone-900 text-amber-300 text-[10px] font-extrabold flex items-center justify-center shrink-0">
+                      ${escHtml(initial)}
+                    </span>
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-1.5">
+                        <b class="text-xs text-stone-900 truncate">${escHtml(grp.picName)}</b>
+                        <span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[9px] font-bold shrink-0">
+                          ${latestBatchItems.length} bahan
+                        </span>
+                      </div>
+                      ${grp.latestDate ? `<p class="text-[9px] text-stone-400">Stok tgl ${escHtml(grp.latestDate)}</p>` : ''}
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-1.5 shrink-0">
+                    <span class="text-[10px] font-semibold text-stone-500">${escHtml(formatShortLogTime(grp.latestTimeRaw))}</span>
+                    <span id="picLogArrow_${idx}" class="text-[10px] text-stone-400 transition-transform duration-150">▼</span>
+                  </div>
+                </button>
+
+                <div id="picLogDetail_${idx}" class="hidden px-2.5 pb-2 pt-1.5 border-t border-stone-200/70 bg-white space-y-1 max-h-44 overflow-y-auto">
+                  ${grp.items.slice(0, 30).map(item => `
+                    <div class="flex items-center justify-between gap-2 text-[10px] py-1 border-b border-stone-100 last:border-b-0">
+                      <div class="min-w-0">
+                        <span class="font-bold text-stone-800 block truncate">${escHtml(item.ingName)}</span>
+                        <span class="text-[9px] text-stone-400">${escHtml(item.date)} • ${escHtml(formatShortLogTime(item.updatedAt))}</span>
+                      </div>
+                      <span class="text-[9px] font-semibold text-stone-600 shrink-0 bg-stone-100 px-1.5 py-0.5 rounded">
+                        IN ${formatNum(item.inQty)} • OUT ${formatNum(item.outQty)} • Wst ${formatNum(item.wasteQty)}
+                      </span>
+                    </div>
+                  `).join('')}
+                </div>
               </div>
-              <span class="text-[10px] text-stone-400">${escHtml(log.updatedAt || log.date)}</span>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
       `}
     </section>
