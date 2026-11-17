@@ -702,6 +702,41 @@ function renderHomeTab(main) {
 }
 
 // ==================== GABUNGAN REKAP BULANAN, SO & PAR STOCK TAB ====================
+function renderParStockListHtml() {
+  const sorted = getSortedIngredients();
+  const q = String(STATE.parSearch || '').trim().toLowerCase();
+  const filtered = sorted.filter(ing => !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q));
+  const curMonth = getLocalTodayStr().slice(0, 7);
+  const mMap = getMonthlySummaryMap(curMonth);
+
+  if (filtered.length === 0) {
+    return `<div class="bg-white p-4 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">Tidak ada bahan baku yang cocok dengan pencarian.</div>`;
+  }
+
+  return filtered.map(ing => {
+    const curCl = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
+    const val = STATE.draftPar[ing.id] !== undefined ? STATE.draftPar[ing.id] : (Number(ing.minStock) || 0);
+    const isLow = val > 0 && curCl <= val;
+    return `
+      <div class="bg-white p-3 rounded-2xl shadow-sm border ${isLow ? 'border-rose-300 bg-rose-50/30' : 'border-stone-200'} flex items-center justify-between gap-2">
+        <div>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-bold">${escHtml(ing.subCategory)}</span>
+          <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(ing.name)}</h3>
+          <p class="text-[11px] ${isLow ? 'text-rose-700 font-bold' : 'text-stone-500'}">
+            Sisa Bulan Ini: ${formatNum(curCl)} ${escHtml(ing.unit)}
+          </p>
+        </div>
+        <div class="w-24 shrink-0">
+          <label class="block text-[9px] font-bold text-stone-500 text-right mb-0.5">Min (${escHtml(ing.unit)})</label>
+          <input type="number" step="any" value="${val}"
+            oninput="STATE.draftPar['${escHtml(ing.id)}']=Number(this.value)||0;"
+            class="w-full px-2 py-1.5 rounded-xl border border-amber-400 text-xs font-extrabold text-right bg-white" />
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function renderParStockAndMonthlyTab(main) {
   const isMonthly = STATE.parSubTab !== 'par';
 
@@ -722,13 +757,6 @@ function renderParStockAndMonthlyTab(main) {
     main.insertBefore(switcher, main.firstChild);
     return;
   }
-
-  // Sub-tab Atur Batas Par Stock (Min Stock)
-  const sorted = getSortedIngredients();
-  const q = String(STATE.parSearch || '').trim().toLowerCase();
-  const filtered = sorted.filter(ing => !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q));
-  const curMonth = getLocalTodayStr().slice(0, 7);
-  const mMap = getMonthlySummaryMap(curMonth);
 
   main.innerHTML = `
     <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3">
@@ -752,33 +780,14 @@ function renderParStockAndMonthlyTab(main) {
           📄 PDF
         </button>
       </div>
-      <input type="text" value="${escHtml(STATE.parSearch)}" oninput="STATE.parSearch=this.value; renderCurrentTab();"
-        placeholder="Cari nama bahan baku..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs" />
+      <input id="parSearchInput" type="text" value="${escHtml(STATE.parSearch)}"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        oninput="STATE.parSearch=this.value; const box=document.getElementById('parListContainer'); if(box) box.innerHTML=renderParStockListHtml();"
+        placeholder="Cari nama bahan baku..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
     </section>
 
-    <section class="space-y-2 mb-3">
-      ${filtered.map(ing => {
-        const curCl = mMap[ing.id] ? mMap[ing.id].totalCl : 0;
-        const val = STATE.draftPar[ing.id] !== undefined ? STATE.draftPar[ing.id] : (Number(ing.minStock) || 0);
-        const isLow = val > 0 && curCl <= val;
-        return `
-          <div class="bg-white p-3 rounded-2xl shadow-sm border ${isLow ? 'border-rose-300 bg-rose-50/30' : 'border-stone-200'} flex items-center justify-between gap-2">
-            <div>
-              <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-bold">${escHtml(ing.subCategory)}</span>
-              <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(ing.name)}</h3>
-              <p class="text-[11px] ${isLow ? 'text-rose-700 font-bold' : 'text-stone-500'}">
-                Sisa Bulan Ini: ${formatNum(curCl)} ${escHtml(ing.unit)}
-              </p>
-            </div>
-            <div class="w-24 shrink-0">
-              <label class="block text-[9px] font-bold text-stone-500 text-right mb-0.5">Min (${escHtml(ing.unit)})</label>
-              <input type="number" step="any" value="${val}"
-                oninput="STATE.draftPar['${escHtml(ing.id)}']=Number(this.value)||0;"
-                class="w-full px-2 py-1.5 rounded-xl border border-amber-400 text-xs font-extrabold text-right bg-white" />
-            </div>
-          </div>
-        `;
-      }).join('')}
+    <section id="parListContainer" class="space-y-2 mb-3">
+      ${renderParStockListHtml()}
     </section>
 
     <button onclick="submitParStockUpdates()" class="w-full py-3 rounded-2xl bg-amber-600 text-white font-extrabold text-xs shadow-md">
@@ -800,7 +809,6 @@ async function submitParStockUpdates() {
 // ==================== MASTER & RECIPES TAB ====================
 function renderMasterTab(main) {
   const isIng = STATE.masterSubTab !== 'recipes';
-  const sorted = getSortedIngredients();
 
   main.innerHTML = `
     <div class="grid grid-cols-2 gap-1.5 p-1 bg-stone-200 rounded-xl mb-3">
@@ -814,18 +822,46 @@ function renderMasterTab(main) {
       </button>
     </div>
 
-    ${isIng ? renderMasterIngredientsHtml(sorted) : renderMasterRecipesHtml()}
+    ${isIng ? renderMasterIngredientsHtml() : renderMasterRecipesHtml()}
   `;
 }
 
-function renderMasterIngredientsHtml(sorted) {
-  const q = STATE.ingSearch.trim().toLowerCase();
+function renderMasterIngredientsListHtml() {
+  const sorted = getSortedIngredients();
+  const q = String(STATE.ingSearch || '').trim().toLowerCase();
   const filtered = sorted.filter(ing => {
     const matchCat = STATE.ingCatFilter === 'ALL' || ing.subCategory === STATE.ingCatFilter;
     const matchQ = !q || ing.name.toLowerCase().includes(q) || ing.subCategory.toLowerCase().includes(q);
     return matchCat && matchQ;
   });
 
+  if (filtered.length === 0) {
+    return `<div class="bg-white p-4 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">Tidak ada bahan baku yang cocok dengan pencarian.</div>`;
+  }
+
+  return filtered.map(ing => {
+    const uCost = getIngUnitCost(ing);
+    return `
+      <div class="bg-white p-3 rounded-2xl shadow-sm border border-stone-200 flex items-center justify-between gap-2">
+        <div>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-bold">${escHtml(ing.subCategory)}</span>
+          <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(ing.name)}</h3>
+          <p class="text-[11px] text-stone-500">
+            ${formatRp(ing.price)} / ${formatNum(ing.packSize)} ${escHtml(ing.unit)}
+            • <b class="text-amber-800">${formatRp(uCost)}/${escHtml(ing.unit)}</b>
+            • Min: ${formatNum(ing.minStock)}
+          </p>
+        </div>
+        <div class="flex gap-1 shrink-0">
+          <button onclick="openIngredientModal('${escHtml(ing.id)}')" class="w-8 h-8 rounded-xl bg-stone-100 text-xs">✏️</button>
+          <button onclick="deleteIngredientAction('${escHtml(ing.id)}')" class="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 text-xs">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMasterIngredientsHtml() {
   return `
     <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
       <div class="flex items-center justify-between gap-2">
@@ -837,7 +873,9 @@ function renderMasterIngredientsHtml(sorted) {
           + Bahan
         </button>
       </div>
-      <input type="text" value="${escHtml(STATE.ingSearch)}" oninput="STATE.ingSearch=this.value; renderCurrentTab();"
+      <input id="ingSearchInput" type="text" value="${escHtml(STATE.ingSearch)}"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        oninput="STATE.ingSearch=this.value; const box=document.getElementById('masterIngListContainer'); if(box) box.innerHTML=renderMasterIngredientsListHtml();"
         placeholder="Cari nama bahan..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
       <div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
         ${['ALL', ...SUB_CATEGORIES].map(cat => `
@@ -849,27 +887,8 @@ function renderMasterIngredientsHtml(sorted) {
       </div>
     </section>
 
-    <section class="space-y-2">
-      ${filtered.map(ing => {
-        const uCost = getIngUnitCost(ing);
-        return `
-          <div class="bg-white p-3 rounded-2xl shadow-sm border border-stone-200 flex items-center justify-between gap-2">
-            <div>
-              <span class="text-[10px] px-2 py-0.5 rounded bg-stone-100 text-stone-600 font-bold">${escHtml(ing.subCategory)}</span>
-              <h3 class="text-xs font-bold text-stone-900 mt-1">${escHtml(ing.name)}</h3>
-              <p class="text-[11px] text-stone-500">
-                ${formatRp(ing.price)} / ${formatNum(ing.packSize)} ${escHtml(ing.unit)}
-                • <b class="text-amber-800">${formatRp(uCost)}/${escHtml(ing.unit)}</b>
-                • Min: ${formatNum(ing.minStock)}
-              </p>
-            </div>
-            <div class="flex gap-1 shrink-0">
-              <button onclick="openIngredientModal('${escHtml(ing.id)}')" class="w-8 h-8 rounded-xl bg-stone-100 text-xs">✏️</button>
-              <button onclick="deleteIngredientAction('${escHtml(ing.id)}')" class="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 text-xs">🗑️</button>
-            </div>
-          </div>
-        `;
-      }).join('')}
+    <section id="masterIngListContainer" class="space-y-2">
+      ${renderMasterIngredientsListHtml()}
     </section>
   `;
 }
@@ -944,11 +963,44 @@ async function deleteIngredientAction(id) {
   await postToBackend({ action: 'saveMasterIngredients', ingredients: updated }, 'Bahan dihapus');
 }
 
-function renderMasterRecipesHtml() {
+function renderMasterRecipesListHtml() {
   const recipes = STATE.recipes.map(normalizeRecipe);
-  const q = STATE.recipeSearch.trim().toLowerCase();
+  const q = String(STATE.recipeSearch || '').trim().toLowerCase();
   const filtered = recipes.filter(r => !q || r.name.toLowerCase().includes(q) || r.category.toLowerCase().includes(q));
 
+  if (filtered.length === 0) {
+    return `<div class="bg-white p-4 rounded-2xl border border-stone-200 text-center text-xs text-stone-400">Tidak ada resep menu yang cocok dengan pencarian.</div>`;
+  }
+
+  return filtered.map(r => {
+    const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
+    return `
+      <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(r.category)}</span>
+            <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(r.name)}</h3>
+          </div>
+          <div class="flex gap-1">
+            <button onclick="openRecipeModal('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
+            <button onclick="deleteRecipeAction('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
+          <div><span class="text-stone-400 block text-[10px]">Harga Jual</span><b>${formatRp(r.sellingPrice)}</b></div>
+          <div><span class="text-stone-400 block text-[10px]">HPP (${cogsPct}%)</span><b class="text-amber-800">${formatRp(r.hpp)}</b></div>
+          <div><span class="text-stone-400 block text-[10px]">Margin</span><b class="text-emerald-700">${r.margin.toFixed(1)}%</b></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-2.5">
+          <button onclick="downloadSingleRecipeHppPdf('${escHtml(r.id)}')" class="py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold">📄 PDF HPP</button>
+          <button onclick="downloadSingleRecipeSopPdf('${escHtml(r.id)}')" class="py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-[11px] font-bold">📋 PDF SOP</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMasterRecipesHtml() {
   return `
     <section class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200 mb-3 space-y-2.5">
       <div class="flex items-center justify-between gap-2">
@@ -960,37 +1012,14 @@ function renderMasterRecipesHtml() {
           + Resep
         </button>
       </div>
-      <input type="text" value="${escHtml(STATE.recipeSearch)}" oninput="STATE.recipeSearch=this.value; renderCurrentTab();"
+      <input id="recipeSearchInput" type="text" value="${escHtml(STATE.recipeSearch)}"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        oninput="STATE.recipeSearch=this.value; const box=document.getElementById('masterRecipeListContainer'); if(box) box.innerHTML=renderMasterRecipesListHtml();"
         placeholder="Cari nama menu..." class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:border-amber-600 focus:outline-none" />
     </section>
 
-    <section class="space-y-2.5">
-      ${filtered.map(r => {
-        const cogsPct = r.sellingPrice > 0 ? ((r.hpp / r.sellingPrice) * 100).toFixed(1) : '0.0';
-        return `
-          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-stone-200">
-            <div class="flex items-start justify-between gap-2">
-              <div>
-                <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold">${escHtml(r.category)}</span>
-                <h3 class="text-sm font-bold text-stone-900 mt-1">${escHtml(r.name)}</h3>
-              </div>
-              <div class="flex gap-1">
-                <button onclick="openRecipeModal('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-stone-100 text-xs">✏️</button>
-                <button onclick="deleteRecipeAction('${escHtml(r.id)}')" class="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 text-xs">🗑️</button>
-              </div>
-            </div>
-            <div class="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
-              <div><span class="text-stone-400 block text-[10px]">Harga Jual</span><b>${formatRp(r.sellingPrice)}</b></div>
-              <div><span class="text-stone-400 block text-[10px]">HPP (${cogsPct}%)</span><b class="text-amber-800">${formatRp(r.hpp)}</b></div>
-              <div><span class="text-stone-400 block text-[10px]">Margin</span><b class="text-emerald-700">${r.margin.toFixed(1)}%</b></div>
-            </div>
-            <div class="grid grid-cols-2 gap-2 mt-2.5">
-              <button onclick="downloadSingleRecipeHppPdf('${escHtml(r.id)}')" class="py-1.5 rounded-xl bg-stone-900 text-white text-[11px] font-bold">📄 PDF HPP</button>
-              <button onclick="downloadSingleRecipeSopPdf('${escHtml(r.id)}')" class="py-1.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-[11px] font-bold">📋 PDF SOP</button>
-            </div>
-          </div>
-        `;
-      }).join('')}
+    <section id="masterRecipeListContainer" class="space-y-2.5">
+      ${renderMasterRecipesListHtml()}
     </section>
   `;
 }
