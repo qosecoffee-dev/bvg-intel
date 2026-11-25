@@ -1,11 +1,13 @@
 // ==================== CORE STATE & CONFIG ====================
 const EXACT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwftS8e89ttxlhv9ZmJ9zqm000lMTs1mzB_cTLiPO6L68WaotWHQQScmPJsUGgjqjWo/exec';
 
-// Pastikan URL di localStorage selalu sinkron dengan URL deployment aktif
+// Pastikan URL di localStorage selalu sinkron otomatis dengan URL deployment aktif
 (function initApiUrl() {
-  const saved = localStorage.getItem('bvg_intel_api_url') || localStorage.getItem('qose_gas_url') || '';
-  if (!saved || saved.includes('AKfycbwfTS8e89')) {
-    localStorage.setItem('bvg_intel_api_url', EXACT_GAS_URL);
+  if (EXACT_GAS_URL && EXACT_GAS_URL.startsWith('https://script.google.com/')) {
+    const saved = localStorage.getItem('bvg_intel_api_url') || '';
+    if (saved !== EXACT_GAS_URL) {
+      localStorage.setItem('bvg_intel_api_url', EXACT_GAS_URL);
+    }
   }
 })();
 
@@ -71,7 +73,9 @@ const savedSyncMeta = (() => {
 })();
 
 const STATE = {
-  gasUrl: localStorage.getItem('bvg_intel_api_url') || EXACT_GAS_URL,
+  gasUrl: (EXACT_GAS_URL && EXACT_GAS_URL.startsWith('https://script.google.com/'))
+    ? EXACT_GAS_URL
+    : (localStorage.getItem('bvg_intel_api_url') || EXACT_GAS_URL),
   activeTab: 'home',
   parSubTab: 'monthly',
   masterSubTab: 'ingredients',
@@ -195,17 +199,57 @@ function closeModal() {
   }
 }
 
+function isHeadBarRole(jabatan) {
+  const role = String(jabatan || '').toLowerCase();
+  return role.includes('head') || role.includes('spv') || role.includes('manager') || role.includes('admin') || role.includes('owner');
+}
+
 function openSettingsModal() {
+  const adminList = STATE.teamBar.filter(t => isHeadBarRole(t.jabatan));
+  const picSource = adminList.length > 0 ? adminList : STATE.teamBar;
+  const picOptions = picSource.map((t, idx) =>
+    `<option value="${escHtml(t.nama)}" ${idx === 0 ? 'selected' : ''}>${escHtml(t.nama)} (${escHtml(t.jabatan)})</option>`
+  ).join('');
+
   openModal('⚙️ Pengaturan Koneksi Google Sheets', `
     <div class="space-y-3">
       <div>
-        <label class="block text-xs font-bold text-stone-700 mb-1">URL Web App Google Apps Script</label>
-        <textarea id="settingsGasUrl" rows="3" class="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-mono">${escHtml(STATE.gasUrl)}</textarea>
+        <div class="flex items-center justify-between mb-1">
+          <label class="text-xs font-bold text-stone-700">URL Web App Google Apps Script</label>
+          <span id="urlLockBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-stone-200 text-stone-700 font-bold">
+            🔒 Terkunci Otomatis
+          </span>
+        </div>
+        <textarea id="settingsGasUrl" rows="3" readonly disabled
+          class="w-full px-3 py-2 rounded-xl border border-stone-300 bg-stone-100 text-stone-500 text-xs font-mono cursor-not-allowed select-none">${escHtml(STATE.gasUrl)}</textarea>
       </div>
+
       <div class="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-[11px] text-stone-600">
         <b>Status Terakhir:</b> ${escHtml(STATE.lastSyncMsg)} (${escHtml(STATE.lastSyncTime)})
       </div>
-      <div class="grid grid-cols-2 gap-2">
+
+      <!-- Panel Verifikasi PIN Head Bar untuk Buka Kunci URL -->
+      <div id="urlUnlockSection" class="p-3 rounded-2xl bg-amber-50/90 border border-amber-200 space-y-2">
+        <p class="text-[11px] font-extrabold text-amber-950">🔐 Buka Kunci Edit URL (Khusus Head Bar)</p>
+        <p class="text-[10px] text-stone-600">URL terpasang otomatis. Masukkan PIN dari sheet <b>Tim_Bar</b> jika ingin mengubah URL server.</p>
+        <div class="grid grid-cols-5 gap-2">
+          <div class="col-span-3">
+            <select id="unlockAdminPic" class="w-full px-2.5 py-2 rounded-xl border border-stone-300 bg-white text-xs font-bold text-stone-900">
+              ${picOptions || '<option value="">-- Data Tim Kosong --</option>'}
+            </select>
+          </div>
+          <div class="col-span-2">
+            <input id="unlockAdminPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="PIN ••••"
+              class="w-full px-2.5 py-2 rounded-xl border border-amber-400 bg-white text-xs font-extrabold text-center tracking-widest text-stone-900" />
+          </div>
+        </div>
+        <button type="button" onclick="unlockSettingsUrl()" class="w-full py-2 rounded-xl bg-stone-900 text-white font-bold text-xs active:scale-95">
+          🔓 Buka Kunci URL
+        </button>
+      </div>
+
+      <!-- Tombol Edit (Tersembunyi sampai PIN benar) -->
+      <div id="urlActionButtons" class="hidden grid grid-cols-2 gap-2">
         <button type="button" onclick="resetDefaultGasUrl()" class="py-2.5 rounded-xl bg-stone-200 text-stone-800 font-bold text-xs">
           Reset Default
         </button>
@@ -217,13 +261,67 @@ function openSettingsModal() {
   `);
 }
 
+function unlockSettingsUrl() {
+  const picName = (document.getElementById('unlockAdminPic')?.value || '').trim();
+  const pin = (document.getElementById('unlockAdminPin')?.value || '').trim();
+
+  if (!picName) {
+    showToast('Pilih akun Head Bar terlebih dahulu!');
+    return;
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    showToast('Masukkan 4 digit angka PIN!');
+    return;
+  }
+
+  const member = STATE.teamBar.find(t => String(t.nama || '').trim().toLowerCase() === picName.toLowerCase());
+  if (!member) {
+    showToast('Data PIC tidak ditemukan di sheet Tim_Bar!');
+    return;
+  }
+  if (!isHeadBarRole(member.jabatan)) {
+    showToast('⛔ Hanya PIN Head Bar / Admin yang diizinkan!');
+    return;
+  }
+
+  const sheetPin = String(member.pin ?? '').trim();
+  if (!sheetPin || sheetPin !== pin) {
+    showToast('❌ PIN salah! Periksa PIN di sheet Tim_Bar.');
+    return;
+  }
+
+  const urlBox = document.getElementById('settingsGasUrl');
+  const badge = document.getElementById('urlLockBadge');
+  const unlockSec = document.getElementById('urlUnlockSection');
+  const actionBtns = document.getElementById('urlActionButtons');
+
+  if (urlBox) {
+    urlBox.removeAttribute('readonly');
+    urlBox.removeAttribute('disabled');
+    urlBox.className = 'w-full px-3 py-2 rounded-xl border-2 border-amber-500 bg-white text-stone-900 text-xs font-mono focus:outline-none';
+  }
+  if (badge) {
+    badge.textContent = '🔓 Kunci Terbuka';
+    badge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold';
+  }
+  if (unlockSec) unlockSec.classList.add('hidden');
+  if (actionBtns) actionBtns.classList.remove('hidden');
+
+  showToast('🔓 Kunci URL berhasil dibuka!');
+}
+
 function resetDefaultGasUrl() {
   const el = document.getElementById('settingsGasUrl');
-  if (el) el.value = EXACT_GAS_URL;
+  if (el && !el.disabled) el.value = EXACT_GAS_URL;
 }
 
 async function saveSettingsGasUrl() {
-  const val = (document.getElementById('settingsGasUrl')?.value || '').trim();
+  const el = document.getElementById('settingsGasUrl');
+  if (!el || el.disabled) {
+    showToast('🔒 Buka kunci URL dengan PIN terlebih dahulu!');
+    return;
+  }
+  const val = (el.value || '').trim();
   if (!val.startsWith('https://script.google.com/')) {
     showToast('URL harus berawalan https://script.google.com/');
     return;
