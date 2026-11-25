@@ -1,5 +1,5 @@
 // ==================== CORE STATE & CONFIG ====================
-const EXACT_GAS_URL = 'https://script.google.com/macros/s/AKfycbwftS8e89ttxlhv9ZmJ9zqm000lMTs1mzB_cTLiPO6L68WaotWHQQScmPJsUGgjqjWo/exec';
+const EXACT_GAS_URL = 'https://script.google.com/macros/s/AKfycbynC9P-Hvdg3JnWz9ppqF7dw-iNz4fHFUc78yaBEsZ-PlwsDB0k-TCt52baRJJyvf-qSw/exec';
 
 // Pastikan URL di localStorage selalu sinkron otomatis dengan URL deployment aktif
 (function initApiUrl() {
